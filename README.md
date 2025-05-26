@@ -43,15 +43,14 @@ npm start
 # Navigate to backend directory
 cd backend
 
-# Create a virtual environment (optional but recommended)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Install Poetry if not already installed
+# pip install poetry
 
 # Install dependencies
-pip install -r requirements.txt
+poetry install
 
 # Run the FastAPI server
-uvicorn app.main:app --reload
+poetry run uvicorn app.main:app --reload
 ```
 
 ## API Documentation
