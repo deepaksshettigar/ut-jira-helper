@@ -49,8 +49,11 @@ cd backend
 # Install dependencies
 poetry install
 
-# Run the FastAPI server
-poetry run uvicorn app.main:app --reload
+# Run the FastAPI server (option 1)
+poetry run start
+
+# Alternatively, you can still run with uvicorn directly (option 2)
+# poetry run uvicorn app.main:app --reload
 ```
 
 ## API Documentation
