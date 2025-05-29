@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "ut-jira-helper"
+version = "0.1.0"
+description = "UT Jira Helper API"
+authors = ["UT Jira Helper Team"]
+packages = [{include = "app"}]
+readme = "../README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.8,<4.0"
+fastapi = "^0.104.1"
+uvicorn = "^0.24.0"
+pydantic = "^2.4.2"
+jira = "^3.5.2"
+python-dotenv = "^1.0.0"
+httpx = "^0.25.1"
+python-multipart = "^0.0.20"
+aiofiles = "^24.1.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+
+[tool.poetry.scripts]
+start = "run:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
