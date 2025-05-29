@@ -9,28 +9,15 @@ function App() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    // In a real app, this would fetch data from the FastAPI backend
-    // Example: fetchJiraTasks();
-    
-    // For demonstration, we'll use some mock data
-    const mockTasks = [
-      { id: 'JIRA-1', title: 'Implement login page', status: 'In Progress' },
-      { id: 'JIRA-2', title: 'Fix navigation bug', status: 'To Do' },
-      { id: 'JIRA-3', title: 'Update documentation', status: 'Done' }
-    ];
-    
-    // Simulate API call
-    setTimeout(() => {
-      setTasks(mockTasks);
-      setLoading(false);
-    }, 1000);
+    fetchJiraTasks();
   }, []);
 
   // Example function to fetch tasks from backend
   const fetchJiraTasks = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('http://localhost:8000/api/tasks');
+      // Use relative path for API call so it works when served from backend
+      const response = await axios.get('/api/tasks');
       setTasks(response.data);
       setError(null);
     } catch (err) {
