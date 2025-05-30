@@ -7,7 +7,8 @@ from app.models.conversation import (
     TaskAnalysis
 )
 from app.models.task import TaskResponse
-from app.api.tasks import mock_tasks
+from app.services.jira_service import jira_service
+from app.services.llm_service import llm_service
 import re
 from datetime import datetime
 import uuid
@@ -19,63 +20,135 @@ router = APIRouter(tags=["conversational-ai"])
 conversation_history: List[ConversationHistory] = []
 
 class ConversationalAI:
-    """Backend conversational AI processor for Jira tasks"""
+    """Enhanced conversational AI processor with LLM integration"""
     
-    def __init__(self, tasks: List[dict]):
-        self.tasks = tasks
+    def __init__(self):
+        self.jira_service = jira_service
+        self.llm_service = llm_service
     
     def process_query(self, query: str, context: Optional[str] = None) -> ConversationResponse:
-        """Process a natural language query and return a structured response"""
+        """Process a natural language query using LLM or fallback to pattern matching"""
+        
+        # Get current task data for context
+        try:
+            tasks_data = self.jira_service.get_tasks()
+        except Exception:
+            tasks_data = []
+        
+        # Try LLM first if available
+        if self.llm_service.is_available():
+            return self._process_with_llm(query, context, tasks_data)
+        else:
+            # Fallback to pattern matching
+            return self._process_with_patterns(query, context, tasks_data)
+    
+    def _process_with_llm(self, query: str, context: Optional[str], tasks_data: List[dict]) -> ConversationResponse:
+        """Process query using local LLM model"""
+        try:
+            # Generate response using LLM
+            llm_response = self.llm_service.generate_response(
+                prompt=query,
+                context=context or "",
+                tasks_data=tasks_data
+            )
+            
+            # Determine suggested actions based on query content
+            suggested_actions = self._get_suggested_actions(query, tasks_data)
+            
+            # Count relevant tasks
+            task_count = self._count_relevant_tasks(query, tasks_data)
+            
+            return ConversationResponse(
+                response=llm_response,
+                query=query,
+                task_count=task_count,
+                suggested_actions=suggested_actions
+            )
+            
+        except Exception as e:
+            # Fallback to pattern matching if LLM fails
+            return self._process_with_patterns(query, context, tasks_data)
+    
+    def _process_with_patterns(self, query: str, context: Optional[str], tasks_data: List[dict]) -> ConversationResponse:
+        """Fallback pattern matching processing"""
         lower_query = query.lower()
         
         # Task creation queries
         if any(keyword in lower_query for keyword in ['create', 'add', 'new task']):
-            return self._handle_task_creation(query)
+            return self._handle_task_creation(query, tasks_data)
         
         # Status-specific queries
         if any(keyword in lower_query for keyword in ['in progress', 'working on']):
-            return self._handle_status_query('In Progress', query)
+            return self._handle_status_query('In Progress', query, tasks_data)
         
         if any(keyword in lower_query for keyword in ['to do', 'todo', 'pending']):
-            return self._handle_status_query('To Do', query)
+            return self._handle_status_query('To Do', query, tasks_data)
         
         if any(keyword in lower_query for keyword in ['done', 'completed', 'finished']):
-            return self._handle_status_query('Done', query)
+            return self._handle_status_query('Done', query, tasks_data)
         
         # Summary and analysis queries
         if any(keyword in lower_query for keyword in ['summary', 'overview', 'status']):
-            return self._handle_summary_query(query)
+            return self._handle_summary_query(query, tasks_data)
         
         # Assignee queries
-        for task in self.tasks:
+        for task in tasks_data:
             if task.get('assignee') and task['assignee'].lower() in lower_query:
-                return self._handle_assignee_query(task['assignee'], query)
+                return self._handle_assignee_query(task['assignee'], query, tasks_data)
         
         # Workload distribution queries
         if any(keyword in lower_query for keyword in ['workload', 'distribution', 'how many', 'count']):
-            return self._handle_workload_query(query)
+            return self._handle_workload_query(query, tasks_data)
         
         # Help queries
         if any(keyword in lower_query for keyword in ['help', 'what can', '?']):
-            return self._handle_help_query(query)
+            return self._handle_help_query(query, tasks_data)
         
         # Search fallback
-        search_results = self._search_tasks(query)
+        search_results = self._search_tasks(query, tasks_data)
         if search_results:
             return self._handle_search_results(query, search_results)
         
-        return self._handle_default_query(query)
+        return self._handle_default_query(query, tasks_data)
     
-    def _search_tasks(self, query: str) -> List[dict]:
+    def _get_suggested_actions(self, query: str, tasks_data: List[dict]) -> List[str]:
+        """Generate suggested actions based on query"""
+        lower_query = query.lower()
+        
+        if 'create' in lower_query or 'add' in lower_query:
+            return ["Set assignee", "Add description", "Create task via API"]
+        elif 'summary' in lower_query or 'overview' in lower_query:
+            return ["View detailed breakdown", "Check assignee workload", "Export report"]
+        elif 'in progress' in lower_query:
+            return ["View task details", "Mark task as done", "Update status"]
+        elif 'workload' in lower_query:
+            return ["Balance workload", "Reassign tasks", "View individual assignments"]
+        else:
+            return ["View task details", "Try different query", "Ask for help"]
+    
+    def _count_relevant_tasks(self, query: str, tasks_data: List[dict]) -> int:
+        """Count tasks relevant to the query"""
+        lower_query = query.lower()
+        
+        if 'in progress' in lower_query:
+            return len([t for t in tasks_data if 'progress' in t.get('status', '').lower()])
+        elif 'to do' in lower_query or 'todo' in lower_query:
+            return len([t for t in tasks_data if 'to do' in t.get('status', '').lower()])
+        elif 'done' in lower_query or 'completed' in lower_query:
+            return len([t for t in tasks_data if 'done' in t.get('status', '').lower()])
+        else:
+            return len(tasks_data)
+    
+    def _search_tasks(self, query: str, tasks_data: List[dict]) -> List[dict]:
         """Search tasks based on query"""
-        return [task for task in self.tasks if 
+        return [task for task in tasks_data if 
                 query.lower() in task.get('title', '').lower() or
                 query.lower() in task.get('description', '').lower() or
                 query.lower() in task.get('id', '').lower() or
                 query.lower() in task.get('status', '').lower() or
                 query.lower() in task.get('assignee', '').lower()]
     
-    def _handle_task_creation(self, query: str) -> ConversationResponse:
+    def _handle_task_creation(self, query: str, tasks_data: List[dict]) -> ConversationResponse:
         """Handle task creation queries"""
         # Extract potential task title
         patterns = [
@@ -116,9 +189,9 @@ Would you like me to help with additional details like assignee or description?"
                 suggested_actions=["Specify task title", "View existing tasks"]
             )
     
-    def _handle_status_query(self, status: str, query: str) -> ConversationResponse:
+    def _handle_status_query(self, status: str, query: str, tasks_data: List[dict]) -> ConversationResponse:
         """Handle queries about tasks with specific status"""
-        filtered_tasks = [task for task in self.tasks if task.get('status') == status]
+        filtered_tasks = [task for task in tasks_data if task.get('status') == status]
         
         if not filtered_tasks:
             response = f"There are no tasks currently marked as '{status}'."
@@ -145,9 +218,9 @@ Would you like me to help with additional details like assignee or description?"
             suggested_actions=actions
         )
     
-    def _handle_summary_query(self, query: str) -> ConversationResponse:
+    def _handle_summary_query(self, query: str, tasks_data: List[dict]) -> ConversationResponse:
         """Handle project summary queries"""
-        analysis = self.analyze_tasks()
+        analysis = self.analyze_tasks(tasks_data)
         
         response = f"""📊 Project Overview:
 
@@ -170,9 +243,9 @@ Total Tasks: {analysis.total_tasks}
             suggested_actions=["View detailed breakdown", "Check assignee workload", "Export report"]
         )
     
-    def _handle_assignee_query(self, assignee: str, query: str) -> ConversationResponse:
+    def _handle_assignee_query(self, assignee: str, query: str, tasks_data: List[dict]) -> ConversationResponse:
         """Handle queries about specific assignee's tasks"""
-        user_tasks = [task for task in self.tasks if task.get('assignee') == assignee]
+        user_tasks = [task for task in tasks_data if task.get('assignee') == assignee]
         
         if not user_tasks:
             return ConversationResponse(
@@ -198,10 +271,10 @@ Total Tasks: {analysis.total_tasks}
             suggested_actions=["View task details", "Reassign tasks", "Check workload balance"]
         )
     
-    def _handle_workload_query(self, query: str) -> ConversationResponse:
+    def _handle_workload_query(self, query: str, tasks_data: List[dict]) -> ConversationResponse:
         """Handle workload distribution queries"""
         assignee_counts = {}
-        for task in self.tasks:
+        for task in tasks_data:
             assignee = task.get('assignee', 'Unassigned')
             assignee_counts[assignee] = assignee_counts.get(assignee, 0) + 1
         
@@ -220,13 +293,18 @@ Total Tasks: {analysis.total_tasks}
         return ConversationResponse(
             response=response,
             query=query,
-            task_count=len(self.tasks),
+            task_count=len(tasks_data),
             suggested_actions=["Balance workload", "Reassign tasks", "View individual assignments"]
         )
     
-    def _handle_help_query(self, query: str) -> ConversationResponse:
+    def _handle_help_query(self, query: str, tasks_data: List[dict]) -> ConversationResponse:
         """Handle help requests"""
-        response = """🤖 AI Assistant Help
+        model_status = "✅ Local LLM Active" if self.llm_service.is_available() else "⚠️ Using Pattern Matching"
+        jira_status = "✅ Jira API Connected" if self.jira_service.is_configured() else "⚠️ Using Mock Data"
+        
+        response = f"""🤖 AI Assistant Help
+
+{model_status} | {jira_status}
 
 I can help you with:
 
@@ -249,12 +327,12 @@ I can help you with:
 • "Create task: [description]" - Task creation guidance
 • Natural language queries about your project
 
-This AI assistant provides intelligent responses and can be extended with local LLM models for enhanced capabilities."""
+{("This AI assistant uses a local LLM model for enhanced responses." if self.llm_service.is_available() else "Enhanced with local LLM support when configured.")}"""
         
         return ConversationResponse(
             response=response,
             query=query,
-            task_count=len(self.tasks),
+            task_count=len(tasks_data),
             suggested_actions=["Try a sample query", "View task summary", "Create new task"]
         )
     
@@ -281,7 +359,7 @@ Description: {task.get('description', 'No description available')}"""
             suggested_actions=["View task details", "Refine search", "Filter results"]
         )
     
-    def _handle_default_query(self, query: str) -> ConversationResponse:
+    def _handle_default_query(self, query: str, tasks_data: List[dict]) -> ConversationResponse:
         """Handle queries that don't match specific patterns"""
         return ConversationResponse(
             response=f"I'm not sure how to help with \"{query}\" specifically. Try asking about task status, assignments, or project summaries. Type 'help' to see what I can do!",
@@ -290,19 +368,19 @@ Description: {task.get('description', 'No description available')}"""
             suggested_actions=["Ask for help", "Try different query", "View all tasks"]
         )
     
-    def analyze_tasks(self) -> TaskAnalysis:
+    def analyze_tasks(self, tasks_data: List[dict]) -> TaskAnalysis:
         """Analyze current tasks and provide insights"""
-        total_tasks = len(self.tasks)
+        total_tasks = len(tasks_data)
         
         # Status breakdown
         status_breakdown = {}
-        for task in self.tasks:
+        for task in tasks_data:
             status = task.get('status', 'Unknown')
             status_breakdown[status] = status_breakdown.get(status, 0) + 1
         
         # Assignee breakdown
         assignee_breakdown = {}
-        for task in self.tasks:
+        for task in tasks_data:
             assignee = task.get('assignee', 'Unassigned')
             assignee_breakdown[assignee] = assignee_breakdown.get(assignee, 0) + 1
         
@@ -339,9 +417,10 @@ async def process_conversation_query(query_data: ConversationQuery):
     """
     Process a natural language query about tasks using AI.
     This endpoint provides conversational AI capabilities for task management.
+    Enhanced with local LLM support when configured.
     """
     try:
-        ai = ConversationalAI(mock_tasks)
+        ai = ConversationalAI()
         response = ai.process_query(query_data.query, query_data.context)
         
         # Store in conversation history
@@ -368,8 +447,10 @@ async def analyze_project_tasks():
     Provides insights, statistics, and recommendations.
     """
     try:
-        ai = ConversationalAI(mock_tasks)
-        analysis = ai.analyze_tasks()
+        ai = ConversationalAI()
+        # Get current tasks
+        tasks_data = jira_service.get_tasks()
+        analysis = ai.analyze_tasks(tasks_data)
         return analysis
     except Exception as e:
         raise HTTPException(
@@ -393,3 +474,16 @@ async def clear_conversation_history():
     global conversation_history
     conversation_history.clear()
     return {"message": "Conversation history cleared successfully"}
+
+@router.get("/ai/status")
+async def get_ai_status():
+    """
+    Get the current status of AI services (LLM and Jira integration).
+    """
+    return {
+        "llm_available": llm_service.is_available(),
+        "llm_model_path": settings.llm_model_path,
+        "jira_configured": jira_service.is_configured(),
+        "jira_server": settings.jira_server,
+        "status": "ready"
+    }

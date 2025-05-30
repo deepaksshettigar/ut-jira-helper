@@ -2,7 +2,19 @@
 
 A comprehensive Jira Dashboard clone with advanced widget system and conversational AI capabilities. This application provides an intuitive interface for managing Jira tasks with modern features like natural language queries, real-time search, and intelligent project insights.
 
-## 🚀 Features
+## 🚀 Key Features
+
+### 🔗 **Real Jira Integration**
+- **Live Data Connection**: Connect to your actual Jira instance using API tokens
+- **Full CRUD Operations**: Read, create, and manage tasks directly through Jira API
+- **Automatic Fallback**: Works with mock data when Jira is not configured
+- **Project Filtering**: Filter tasks by project, status, and assignee
+
+### 🤖 **Local LLM Conversational AI**
+- **GGUF Model Support**: Run local LLM models (.gguf files) for enhanced conversational capabilities
+- **Intelligent Responses**: Context-aware responses based on actual task data
+- **Pattern Matching Fallback**: Works with basic pattern matching when LLM is not available
+- **Natural Language Processing**: Handle complex queries about projects, tasks, and team workload
 
 ### 🎛️ Interactive Dashboard
 - **Responsive Grid Layout**: Clean, modern dashboard that adapts to all screen sizes
@@ -33,35 +45,52 @@ A comprehensive Jira Dashboard clone with advanced widget system and conversatio
 
 ### 🤖 Conversational AI System
 
-#### Frontend AI Features
-- Natural language query processing
-- Context-aware responses based on current task data
-- Support for complex queries like:
-  - "What's in progress?"
-  - "Give me a summary"
-  - "Show workload distribution"
-  - "What's user1 working on?"
-  - "Create task: Fix login bug"
+#### Local LLM Integration
+- **GGUF Model Support**: Direct integration with local .gguf model files
+- **High Performance**: Runs entirely offline with llama-cpp-python
+- **Context-Aware Responses**: Uses current task data to provide relevant insights
+- **Configurable Parameters**: Adjustable temperature, context size, and token limits
 
-#### Backend AI Services
-- **RESTful AI Endpoints**: Structured API for conversational processing
-- **Query Analysis**: Pattern matching and natural language understanding
-- **Task Analytics**: Intelligent project insights and recommendations
-- **Conversation History**: Track and analyze user interactions
-- **Extensible Architecture**: Ready for local LLM integration (GGUF models)
+#### Real Jira API Integration  
+- **Live Data Processing**: Queries work with actual Jira tasks and projects
+- **API Token Authentication**: Secure connection using Jira API tokens
+- **Project-Specific Filtering**: Automatic filtering by configured project keys
+- **Real-time Task Management**: Create, read, and analyze tasks directly from Jira
+
+#### AI Response Capabilities
+- Natural language query processing with actual task context
+- Support for complex queries like:
+  - "What's in progress for Project X?"
+  - "Give me a summary of John's workload"
+  - "Show tasks that need attention"
+  - "Create task: Implement new feature"
+  - "Which team member has the most open tasks?"
+
+#### Fallback Systems
+- **Pattern Matching**: Works without LLM using intelligent pattern recognition
+- **Mock Data**: Functions with sample data when Jira is not configured
+- **Graceful Degradation**: Maintains functionality across all configuration states
 
 ### 🔌 API Integration
 
+#### Jira API Endpoints
+- **Real Jira Connection**: Direct integration with Atlassian Jira Cloud/Server
+- **Authentication**: API token-based secure authentication
+- **Task Operations**: Full CRUD operations on Jira issues
+- **JQL Support**: Advanced queries using Jira Query Language
+- **Project Filtering**: Automatic project and status-based filtering
+
 #### Task Management Endpoints
-- `GET /api/tasks` - Retrieve tasks with filtering options
-- `GET /api/tasks/{id}` - Get specific task details
-- `POST /api/tasks` - Create new tasks
+- `GET /api/tasks` - Retrieve tasks from Jira with filtering options
+- `GET /api/tasks/{id}` - Get specific task details from Jira
+- `POST /api/tasks` - Create new tasks directly in Jira
 
 #### Conversational AI Endpoints
-- `POST /api/ai/query` - Process natural language queries
-- `GET /api/ai/analyze` - Get AI-powered project analysis
+- `POST /api/ai/query` - Process natural language queries with LLM or pattern matching
+- `GET /api/ai/analyze` - Get AI-powered project analysis from real Jira data
 - `GET /api/ai/history` - Retrieve conversation history
 - `DELETE /api/ai/history` - Clear conversation history
+- `GET /api/ai/status` - Check LLM and Jira integration status
 
 ## 🛠️ Tech Stack
 
@@ -109,39 +138,95 @@ ut-jira-helper/
 - **npm** or **yarn** package manager
 - **Python** (v3.8 or later)
 - **pip** package manager
+- **Jira Instance** (Cloud or Server) with API access
+- **LLM Model** (optional .gguf file for enhanced AI)
 
-### Frontend Setup
+### Quick Start
 
+1. **Clone and Setup**
+   ```bash
+   git clone <repository-url>
+   cd ut-jira-helper
+   ```
+
+2. **Configure Environment**
+   ```bash
+   cd backend
+   cp .env.example .env
+   # Edit .env with your Jira credentials and LLM model path
+   ```
+
+3. **Install Backend Dependencies**
+   ```bash
+   cd backend
+   pip install fastapi uvicorn pydantic pydantic-settings jira python-dotenv httpx python-multipart aiofiles llama-cpp-python
+   ```
+
+4. **Install Frontend Dependencies**
+   ```bash
+   cd frontend
+   npm install
+   ```
+
+5. **Start the Application**
+   ```bash
+   # Terminal 1: Start backend
+   cd backend
+   uvicorn app.main:app --reload
+   
+   # Terminal 2: Start frontend
+   cd frontend
+   npm start
+   ```
+
+### Configuration
+
+#### Jira Integration Setup
+
+1. **Get Jira API Token**:
+   - Log in to your Jira instance
+   - Go to Account Settings > Security > API tokens
+   - Create a new token and copy it
+
+2. **Configure Environment Variables**:
+   ```bash
+   JIRA_SERVER=https://your-company.atlassian.net
+   JIRA_USERNAME=your-email@example.com
+   JIRA_API_TOKEN=your-jira-api-token
+   JIRA_PROJECT_KEY=YOUR_PROJECT
+   ```
+
+#### Local LLM Setup (Optional)
+
+1. **Download GGUF Model**:
+   ```bash
+   mkdir -p backend/models
+   # Download your preferred .gguf model file
+   # Example: Code Llama, Llama 2, Mistral, etc.
+   ```
+
+2. **Configure LLM Settings**:
+   ```bash
+   LLM_MODEL_PATH=./models/your-model.gguf
+   LLM_CONTEXT_SIZE=4096
+   LLM_MAX_TOKENS=512
+   LLM_TEMPERATURE=0.7
+   ```
+
+### Verification
+
+Check integration status:
 ```bash
-# Navigate to frontend directory
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start development server
-npm start
-
-# Application will be available at http://localhost:3000
+curl http://localhost:8000/ai/status
 ```
 
-### Backend Setup
-
-```bash
-# Navigate to backend directory
-cd backend
-
-# Option 1: Using Poetry (recommended)
-pip install poetry
-poetry install
-poetry run uvicorn app.main:app --reload
-
-# Option 2: Using pip directly
-pip install fastapi uvicorn pydantic
-uvicorn app.main:app --reload
-
-# API will be available at http://localhost:8000
-# Interactive API docs at http://localhost:8000/docs
+Should return:
+```json
+{
+  "llm_available": true,
+  "jira_configured": true,
+  "status": "ready"
+}
 ```
 
 ## 📖 Usage Examples
@@ -183,60 +268,72 @@ The AI assistant supports conversational queries across various categories:
 
 ### 🔍 Advanced Search Features
 
-The search widget provides powerful filtering capabilities:
+The search widget provides powerful filtering capabilities with real Jira data:
 
 - **Full-text search** across task titles, descriptions, and IDs
 - **Status filtering** with visual indicators
 - **Assignee-based searches** for team management
+- **JQL Integration** for advanced Jira queries
 - **Real-time results** with instant feedback
 - **Search history** for repeated queries
+
+### 🤖 Conversational AI Examples
+
+#### With Local LLM Model
+```
+"What tasks are overdue in Project ABC?"
+"Show me John's current workload and suggest redistributions"
+"Generate a weekly status report for the development team"
+"What are the common themes in our bug reports this month?"
+```
+
+#### Basic Pattern Matching (Fallback)
+```
+"What's in progress?"
+"Show me completed tasks"
+"Give me a project summary"
+"What's user1 working on?"
+```
 
 ### 📊 Dashboard Widgets
 
 #### Task Summary Widget
-- Provides at-a-glance project status
-- Shows task distribution across statuses
-- Calculates completion percentages
-- Offers drill-down capabilities
+- Real-time task counts from Jira
+- Visual status distribution with Jira-accurate colors
+- Progress calculations based on actual project data
+- Drill-down capabilities to detailed views
 
 #### Task List Widget
-- Displays tasks in a clean, organized format
-- Supports dynamic filtering and sorting
-- Shows essential task information (ID, title, status, assignee)
+- Dynamic display of actual Jira tasks
+- Live status updates and assignee information
+- Configurable filters and sorting options
 - Responsive design for mobile devices
 
-## 🔮 Future Enhancements
+## 🔮 Advanced Features
 
-### Local LLM Integration
-The backend architecture is designed to easily integrate with local LLM models:
+### Real-Time Jira Integration
+The application connects directly to your Jira instance for live data:
 
-```python
-# Future LLM integration example
-from llm_provider import LocalLLM
+- **Automatic Task Sync**: Real-time updates from your Jira projects
+- **Bidirectional Sync**: Changes made through the app reflect in Jira
+- **Project Filtering**: Automatically filters by your configured project keys
+- **Status Mapping**: Accurate status representation matching your Jira workflow
 
-async def process_with_llm(query: str, context: str):
-    llm = LocalLLM(model_path="path/to/gguf/model")
-    response = await llm.generate_response(query, context)
-    return response
-```
+### Local LLM Processing
+Enhanced conversational AI using local GGUF models:
 
-### Advanced Jira API Features
-- Real Jira API integration for live data
-- Custom field support and advanced filtering
-- Automated workflow management
-- Integration with Jira webhooks for real-time updates
+- **Privacy-First**: All AI processing happens locally, no data sent to external services  
+- **Model Flexibility**: Support for various GGUF models (Llama 2, Code Llama, Mistral, etc.)
+- **Context-Aware**: Uses actual project data for intelligent responses
+- **Performance Optimized**: Efficient inference with llama-cpp-python
 
-### Enhanced Conversational Capabilities
-- Multi-turn conversations with context retention
-- Task creation through natural language
-- Automated project insights and recommendations
-- Voice interface integration
+### Intelligent Fallbacks
+Robust operation across different configuration scenarios:
 
-### Additional Widget Types
-- **Charts Widget**: Visual analytics and reporting
-- **Calendar Widget**: Due date and timeline management
-- **Team Widget**: Assignee management and workload visualization
-- **Custom Filters Widget**: Advanced query building interface
+- **LLM Fallback**: Pattern matching when local model isn't available
+- **Jira Fallback**: Mock data mode for development and testing
+- **Graceful Degradation**: Full functionality maintained regardless of configuration
+- **Status Monitoring**: Real-time status of all integrations
 
 ## 🔧 API Documentation
 

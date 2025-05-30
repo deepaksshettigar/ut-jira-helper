@@ -11,11 +11,13 @@ python = ">=3.8,<4.0"
 fastapi = "^0.104.1"
 uvicorn = "^0.24.0"
 pydantic = "^2.4.2"
+pydantic-settings = "^2.0.3"
 jira = "^3.5.2"
 python-dotenv = "^1.0.0"
 httpx = "^0.25.1"
 python-multipart = "^0.0.20"
 aiofiles = "^24.1.0"
+llama-cpp-python = "^0.2.11"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0.0"
