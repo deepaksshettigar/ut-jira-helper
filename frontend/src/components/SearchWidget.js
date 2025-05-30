@@ -1,26 +1,28 @@
 import React, { useState } from 'react';
 import Widget from './Widget';
+import { ConversationalHelper } from '../utils/conversationalHelper';
 
 function SearchWidget({ tasks, onSearch }) {
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchHistory, setSearchHistory] = useState([]);
+  const [aiResponse, setAiResponse] = useState('');
+
+  const conversationalHelper = new ConversationalHelper(tasks);
 
   const handleSearch = (searchQuery) => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
+      setAiResponse('');
       return;
     }
 
-    // Simple search logic - can be enhanced with LLM later
-    const results = (tasks || []).filter(task => 
-      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.status.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.assignee?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Get AI response
+    const response = conversationalHelper.getResponse(searchQuery);
+    setAiResponse(response);
 
+    // Simple search logic for filtering tasks
+    const results = conversationalHelper.searchTasks(searchQuery);
     setSearchResults(results);
     
     // Add to search history
@@ -48,6 +50,7 @@ function SearchWidget({ tasks, onSearch }) {
   const clearSearch = () => {
     setQuery('');
     setSearchResults([]);
+    setAiResponse('');
   };
 
   return (
@@ -74,51 +77,67 @@ function SearchWidget({ tasks, onSearch }) {
           <h4 style={sectionTitleStyle}>Quick Questions:</h4>
           <div style={quickButtonsStyle}>
             <button 
+              onClick={() => handleQuickSearch('help')}
+              style={quickButtonStyle}
+            >
+              💬 What can you help me with?
+            </button>
+            <button 
+              onClick={() => handleQuickSearch('summary')}
+              style={quickButtonStyle}
+            >
+              📊 Give me a summary
+            </button>
+            <button 
               onClick={() => handleQuickSearch('in progress')}
               style={quickButtonStyle}
             >
-              What's in progress?
+              🔄 What's in progress?
             </button>
             <button 
-              onClick={() => handleQuickSearch('to do')}
+              onClick={() => handleQuickSearch('workload')}
               style={quickButtonStyle}
             >
-              What needs to be done?
+              👥 Show workload distribution
             </button>
             <button 
-              onClick={() => handleQuickSearch('done')}
+              onClick={() => handleQuickSearch('create task: ')}
               style={quickButtonStyle}
             >
-              What's completed?
+              ➕ How to create a task?
             </button>
           </div>
         </div>
 
+        {/* AI Response */}
+        {aiResponse && (
+          <div style={aiResponseContainerStyle}>
+            <h4 style={sectionTitleStyle}>💬 AI Assistant:</h4>
+            <div style={aiResponseStyle}>
+              <pre style={aiResponseTextStyle}>{aiResponse}</pre>
+            </div>
+          </div>
+        )}
+
         {/* Search Results */}
-        {query && (
+        {query && searchResults.length > 0 && (
           <div style={resultsContainerStyle}>
             <h4 style={sectionTitleStyle}>
-              Results for "{query}" ({searchResults.length} found)
+              📋 Task Results ({searchResults.length} found)
             </h4>
-            {searchResults.length > 0 ? (
-              <ul style={resultsListStyle}>
-                {searchResults.map(task => (
-                  <li key={task.id} style={resultItemStyle}>
-                    <div style={resultHeaderStyle}>
-                      <span style={resultIdStyle}>{task.id}</span>
-                      <span style={getStatusBadgeStyle(task.status)}>
-                        {task.status}
-                      </span>
-                    </div>
-                    <p style={resultTitleStyle}>{task.title}</p>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p style={noResultsStyle}>
-                No tasks found matching "{query}". Try a different search term.
-              </p>
-            )}
+            <ul style={resultsListStyle}>
+              {searchResults.map(task => (
+                <li key={task.id} style={resultItemStyle}>
+                  <div style={resultHeaderStyle}>
+                    <span style={resultIdStyle}>{task.id}</span>
+                    <span style={getStatusBadgeStyle(task.status)}>
+                      {task.status}
+                    </span>
+                  </div>
+                  <p style={resultTitleStyle}>{task.title}</p>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -241,13 +260,6 @@ const resultTitleStyle = {
   color: '#333'
 };
 
-const noResultsStyle = {
-  margin: 0,
-  fontSize: '0.85rem',
-  color: '#666',
-  fontStyle: 'italic'
-};
-
 const historyContainerStyle = {
   marginTop: '1rem'
 };
@@ -266,6 +278,28 @@ const historyButtonStyle = {
   color: '#666',
   fontSize: '0.75rem',
   cursor: 'pointer'
+};
+
+const aiResponseContainerStyle = {
+  marginBottom: '1rem'
+};
+
+const aiResponseStyle = {
+  backgroundColor: '#f0f7ff',
+  border: '1px solid #cce7ff',
+  borderRadius: '6px',
+  padding: '0.75rem',
+  marginTop: '0.5rem'
+};
+
+const aiResponseTextStyle = {
+  margin: 0,
+  fontFamily: 'inherit',
+  fontSize: '0.85rem',
+  lineHeight: 1.4,
+  color: '#333',
+  whiteSpace: 'pre-wrap',
+  wordWrap: 'break-word'
 };
 
 const getStatusBadgeStyle = (status) => {
