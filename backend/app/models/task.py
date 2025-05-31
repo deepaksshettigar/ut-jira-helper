@@ -17,7 +17,7 @@ class TaskResponse(TaskBase):
     status: str = Field(..., description="Current status of the task")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "id": "JIRA-123",
                 "title": "Implement login page",

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import JiraTaskList from './components/JiraTaskList';
+import Dashboard from './components/Dashboard';
 import Header from './components/Header';
+import './App.css';
 
 function App() {
   const [tasks, setTasks] = useState([]);
@@ -32,16 +33,27 @@ function App() {
     <div className="app">
       <Header />
       <main>
-        <h1>UT Jira Helper</h1>
         {error && <div className="error-message">{error}</div>}
         {loading ? (
-          <p>Loading tasks...</p>
+          <div style={loadingStyle}>
+            <p>Loading dashboard...</p>
+          </div>
         ) : (
-          <JiraTaskList tasks={tasks} />
+          <Dashboard tasks={tasks} />
         )}
       </main>
     </div>
   );
 }
+
+// Loading style
+const loadingStyle = {
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  height: '50vh',
+  fontSize: '1.1rem',
+  color: '#666'
+};
 
 export default App;
