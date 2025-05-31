@@ -58,3 +58,17 @@ async def create_task(task: TaskCreate):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error creating task: {str(e)}"
         )
+
+@router.get("/tasks/analytics/weekly-resolved")
+async def get_weekly_resolved_analytics(assignee: Optional[str] = None, weeks: int = 4):
+    """
+    Get average resolved tasks per week with optional assignee filter.
+    """
+    try:
+        analytics = jira_service.get_weekly_resolved_average(assignee=assignee, weeks=weeks)
+        return analytics
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error calculating weekly analytics: {str(e)}"
+        )

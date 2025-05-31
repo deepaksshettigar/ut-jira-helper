@@ -36,8 +36,8 @@ function SearchWidget({ tasks, onSearch, onChartRecommendation }) {
       
       // Call chart recommendation callback if chart recommendation exists
       if (response.chartRecommendation && onChartRecommendation) {
-        // Prepare chart data from search results
-        const chartData = prepareChartData(results);
+        // Use chartData from response if available (for analytics), otherwise prepare from search results
+        const chartData = response.chartData || prepareChartData(results);
         onChartRecommendation(chartData, response.chartRecommendation);
       }
       

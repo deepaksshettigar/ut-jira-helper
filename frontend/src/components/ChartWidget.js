@@ -18,6 +18,8 @@ function ChartWidget({ data, chartType, title }) {
         return renderBarChart(data);
       case 'timeline':
         return renderTimelineChart(data);
+      case 'weekly_resolved':
+        return renderWeeklyResolvedChart(data);
       case 'table':
         return renderTable(data);
       default:
@@ -97,6 +99,51 @@ function ChartWidget({ data, chartType, title }) {
             </div>
           ))}
         </div>
+      </div>
+    );
+  };
+
+  const renderWeeklyResolvedChart = (data) => {
+    // Handle weekly resolved data structure
+    const weeklyData = data.weekly_breakdown || data;
+    const assigneeInfo = data.assignee ? ` for ${data.assignee}` : '';
+    const averageInfo = data.average_per_week ? ` (Avg: ${data.average_per_week}/week)` : '';
+    
+    const maxValue = Math.max(...Object.values(weeklyData));
+    
+    return (
+      <div style={chartContainerStyle}>
+        <h4 style={chartTitleStyle}>
+          Weekly Resolved Tasks{assigneeInfo}{averageInfo}
+        </h4>
+        <div style={weeklyResolvedChartStyle}>
+          {Object.entries(weeklyData).map(([week, count]) => {
+            const height = maxValue > 0 ? (count / maxValue) * 100 : 0;
+            
+            return (
+              <div key={week} style={weeklyBarContainerStyle}>
+                <div style={weeklyBarLabelStyle}>{week}</div>
+                <div style={weeklyBarStyle}>
+                  <div 
+                    style={{
+                      ...weeklyBarFillStyle, 
+                      height: `${height}%`,
+                      backgroundColor: '#36B37E'
+                    }}
+                  >
+                    <span style={weeklyBarValueStyle}>{count}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {data.total_resolved !== undefined && (
+          <div style={weeklyStatsStyle}>
+            <p><strong>Total Resolved:</strong> {data.total_resolved} tasks</p>
+            <p><strong>Period:</strong> {data.weeks_analyzed} weeks</p>
+          </div>
+        )}
       </div>
     );
   };
@@ -292,6 +339,69 @@ const tableRowStyle = {
 const tableCellStyle = {
   padding: '0.5rem',
   border: '1px solid #ddd'
+};
+
+// Weekly resolved chart styles
+const weeklyResolvedChartStyle = {
+  display: 'flex',
+  gap: '1rem',
+  alignItems: 'end',
+  height: '150px',
+  marginBottom: '1rem'
+};
+
+const weeklyBarContainerStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  flex: 1,
+  minWidth: '60px'
+};
+
+const weeklyBarLabelStyle = {
+  fontSize: '0.7rem',
+  marginBottom: '0.5rem',
+  textAlign: 'center',
+  fontWeight: '500',
+  lineHeight: '1.2'
+};
+
+const weeklyBarStyle = {
+  width: '100%',
+  height: '120px',
+  backgroundColor: '#f0f0f0',
+  borderRadius: '4px',
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'end'
+};
+
+const weeklyBarFillStyle = {
+  width: '100%',
+  borderRadius: '4px',
+  position: 'relative',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: 'white',
+  fontWeight: 'bold',
+  fontSize: '0.8rem',
+  minHeight: '20px'
+};
+
+const weeklyBarValueStyle = {
+  position: 'absolute',
+  top: '50%',
+  left: '50%',
+  transform: 'translate(-50%, -50%)'
+};
+
+const weeklyStatsStyle = {
+  fontSize: '0.85rem',
+  color: '#666',
+  borderTop: '1px solid #eee',
+  paddingTop: '0.75rem',
+  marginTop: '0.75rem'
 };
 
 export default ChartWidget;
