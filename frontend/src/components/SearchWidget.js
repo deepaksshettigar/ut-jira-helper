@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Widget from './Widget';
 import { ConversationalHelper } from '../utils/conversationalHelper';
 
-function SearchWidget({ tasks, onSearch }) {
+function SearchWidget({ tasks, onSearch, onChartRecommendation }) {
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchHistory, setSearchHistory] = useState([]);
@@ -33,6 +33,13 @@ function SearchWidget({ tasks, onSearch }) {
       // Simple search logic for filtering tasks (local fallback)
       const results = conversationalHelper.searchTasks(searchQuery);
       setSearchResults(results);
+      
+      // Call chart recommendation callback if chart recommendation exists
+      if (response.chartRecommendation && onChartRecommendation) {
+        // Prepare chart data from search results
+        const chartData = prepareChartData(results);
+        onChartRecommendation(chartData, response.chartRecommendation);
+      }
       
       // Add to search history
       if (!searchHistory.includes(searchQuery)) {
@@ -69,6 +76,17 @@ function SearchWidget({ tasks, onSearch }) {
     setAiResponse('');
     setChartRecommendation(null);
     setSuggestedActions([]);
+  };
+
+  const prepareChartData = (results) => {
+    const statusData = {};
+    
+    results.forEach(task => {
+      const status = task.status || 'Unknown';
+      statusData[status] = (statusData[status] || 0) + 1;
+    });
+    
+    return statusData;
   };
 
   return (

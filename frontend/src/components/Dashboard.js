@@ -2,11 +2,6 @@ import React, { useState } from 'react';
 import TaskSummaryWidget from './TaskSummaryWidget';
 import TaskListWidget from './TaskListWidget';
 import SearchWidget from './SearchWidget';
-
-import React, { useState } from 'react';
-import TaskSummaryWidget from './TaskSummaryWidget';
-import TaskListWidget from './TaskListWidget';
-import SearchWidget from './SearchWidget';
 import ChartWidget from './ChartWidget';
 
 function Dashboard({ tasks }) {
