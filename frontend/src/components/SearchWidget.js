@@ -142,6 +142,18 @@ function SearchWidget({ tasks, onSearch, onChartRecommendation }) {
             >
               ➕ How to create a task?
             </button>
+            <button 
+              onClick={() => handleQuickSearch('average resolved per week')}
+              style={quickButtonStyle}
+            >
+              📈 Show weekly resolved chart
+            </button>
+            <button 
+              onClick={() => handleQuickSearch('weekly resolved for user1')}
+              style={quickButtonStyle}
+            >
+              📊 User1 weekly resolved
+            </button>
           </div>
         </div>
 
