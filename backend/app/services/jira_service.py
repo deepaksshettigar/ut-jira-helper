@@ -2,6 +2,7 @@ from jira import JIRA
 from typing import List, Dict, Optional
 from app.config import settings
 import logging
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -193,51 +194,126 @@ class JiraService:
     
     def _convert_issue_to_task(self, issue) -> Dict:
         """Convert Jira issue to task dictionary"""
+        resolved_date = None
+        if hasattr(issue.fields, 'resolutiondate') and issue.fields.resolutiondate:
+            try:
+                resolved_date = datetime.fromisoformat(issue.fields.resolutiondate.replace('Z', '+00:00'))
+            except:
+                resolved_date = None
+        
+        created_date = None
+        if hasattr(issue.fields, 'created') and issue.fields.created:
+            try:
+                created_date = datetime.fromisoformat(issue.fields.created.replace('Z', '+00:00'))
+            except:
+                created_date = None
+        
         return {
             "id": str(issue.key),
             "title": issue.fields.summary,
             "description": getattr(issue.fields, 'description', '') or '',
             "status": str(issue.fields.status),
-            "assignee": str(issue.fields.assignee) if issue.fields.assignee else 'Unassigned'
+            "assignee": str(issue.fields.assignee) if issue.fields.assignee else 'Unassigned',
+            "created_date": created_date.isoformat() if created_date else None,
+            "resolved_date": resolved_date.isoformat() if resolved_date else None
         }
     
     def _get_mock_tasks(self, status: Optional[str] = None, assignee: Optional[str] = None, filter_criteria: Optional[FilterCriteria] = None) -> List[Dict]:
         """Fallback mock data when Jira is not configured"""
+        # Create dates for realistic timeline - last 4 weeks
+        now = datetime.now()
+        base_date = now - timedelta(weeks=4)
+        
         mock_tasks = [
             {
                 "id": "JIRA-1",
                 "title": "Implement login page",
                 "description": "Create a responsive login page with email and password fields",
                 "status": "In Progress",
-                "assignee": "user1@example.com"
+                "assignee": "user1@example.com",
+                "created_date": (base_date + timedelta(days=2)).isoformat(),
+                "resolved_date": None
             },
             {
                 "id": "JIRA-2",
                 "title": "Fix navigation bug",
                 "description": "Menu doesn't appear correctly on mobile devices",
                 "status": "To Do",
-                "assignee": "user2@example.com"
+                "assignee": "user2@example.com",
+                "created_date": (base_date + timedelta(days=5)).isoformat(),
+                "resolved_date": None
             },
             {
                 "id": "JIRA-3",
                 "title": "Update documentation",
                 "description": "Add API documentation for the new endpoints",
                 "status": "Done",
-                "assignee": "user1@example.com"
+                "assignee": "user1@example.com",
+                "created_date": (base_date + timedelta(days=1)).isoformat(),
+                "resolved_date": (base_date + timedelta(days=8)).isoformat()
             },
             {
                 "id": "JIRA-4",
                 "title": "Create dashboard widget",
                 "description": "Design and implement dashboard widgets for data visualization",
                 "status": "To Do",
-                "assignee": "user2@example.com"
+                "assignee": "user2@example.com",
+                "created_date": (base_date + timedelta(days=10)).isoformat(),
+                "resolved_date": None
             },
             {
                 "id": "JIRA-5",
                 "title": "Fix login authentication",
                 "description": "Users unable to login with valid credentials",
                 "status": "In Progress",
-                "assignee": "user1@example.com"
+                "assignee": "user1@example.com",
+                "created_date": (base_date + timedelta(days=7)).isoformat(),
+                "resolved_date": None
+            },
+            {
+                "id": "JIRA-6",
+                "title": "Add user profile page",
+                "description": "Create user profile management functionality",
+                "status": "Done",
+                "assignee": "user2@example.com",
+                "created_date": (base_date + timedelta(days=3)).isoformat(),
+                "resolved_date": (base_date + timedelta(days=14)).isoformat()
+            },
+            {
+                "id": "JIRA-7",
+                "title": "Implement search functionality",
+                "description": "Add search capability to the application",
+                "status": "Done",
+                "assignee": "user1@example.com",
+                "created_date": (base_date + timedelta(days=6)).isoformat(),
+                "resolved_date": (base_date + timedelta(days=15)).isoformat()
+            },
+            {
+                "id": "JIRA-8",
+                "title": "Fix responsive design",
+                "description": "Improve mobile responsiveness across all pages",
+                "status": "Done",
+                "assignee": "user2@example.com",
+                "created_date": (base_date + timedelta(days=4)).isoformat(),
+                "resolved_date": (base_date + timedelta(days=16)).isoformat()
+            },
+            {
+                "id": "JIRA-9",
+                "title": "Setup automated testing",
+                "description": "Implement unit and integration tests",
+                "status": "Done",
+                "assignee": "user1@example.com",
+                "created_date": (base_date + timedelta(days=9)).isoformat(),
+                "resolved_date": (base_date + timedelta(days=21)).isoformat()
+            },
+            {
+                "id": "JIRA-10",
+                "title": "Database optimization",
+                "description": "Optimize database queries for better performance",
+                "status": "Done",
+                "assignee": "user2@example.com",
+                "created_date": (base_date + timedelta(days=12)).isoformat(),
+                "resolved_date": (base_date + timedelta(days=22)).isoformat()
             }
         ]
         
@@ -286,9 +362,60 @@ class JiraService:
             "title": title,
             "description": description,
             "status": "To Do",
-            "assignee": assignee or "Unassigned"
+            "assignee": assignee or "Unassigned",
+            "created_date": datetime.now().isoformat(),
+            "resolved_date": None
         }
         return new_task
+
+    def get_weekly_resolved_average(self, assignee: Optional[str] = None, weeks: int = 4) -> Dict:
+        """Calculate average resolved tasks per week with optional assignee filter"""
+        all_tasks = self.get_tasks()
+        
+        # Filter by assignee if provided
+        if assignee:
+            all_tasks = [task for task in all_tasks if task.get("assignee") == assignee]
+        
+        # Filter only resolved tasks (Done status)
+        resolved_tasks = [task for task in all_tasks 
+                         if task.get("status") == "Done" and task.get("resolved_date")]
+        
+        if not resolved_tasks:
+            return {
+                "average_per_week": 0,
+                "total_resolved": 0,
+                "weeks_analyzed": weeks,
+                "assignee": assignee,
+                "weekly_breakdown": {}
+            }
+        
+        # Group tasks by week
+        now = datetime.now()
+        weekly_counts = {}
+        
+        for week_offset in range(weeks):
+            week_start = now - timedelta(weeks=week_offset + 1)
+            week_end = now - timedelta(weeks=week_offset)
+            week_key = f"Week {week_offset + 1} ago"
+            
+            week_count = 0
+            for task in resolved_tasks:
+                resolved_date = datetime.fromisoformat(task["resolved_date"].replace('Z', '+00:00'))
+                if week_start <= resolved_date < week_end:
+                    week_count += 1
+            
+            weekly_counts[week_key] = week_count
+        
+        total_resolved = sum(weekly_counts.values())
+        average_per_week = total_resolved / weeks if weeks > 0 else 0
+        
+        return {
+            "average_per_week": round(average_per_week, 2),
+            "total_resolved": total_resolved,
+            "weeks_analyzed": weeks,
+            "assignee": assignee,
+            "weekly_breakdown": weekly_counts
+        }
 
 # Global instance
 jira_service = JiraService()

@@ -36,8 +36,8 @@ function SearchWidget({ tasks, onSearch, onChartRecommendation }) {
       
       // Call chart recommendation callback if chart recommendation exists
       if (response.chartRecommendation && onChartRecommendation) {
-        // Prepare chart data from search results
-        const chartData = prepareChartData(results);
+        // Use chartData from response if available (for analytics), otherwise prepare from search results
+        const chartData = response.chartData || prepareChartData(results);
         onChartRecommendation(chartData, response.chartRecommendation);
       }
       
@@ -141,6 +141,18 @@ function SearchWidget({ tasks, onSearch, onChartRecommendation }) {
               style={quickButtonStyle}
             >
               ➕ How to create a task?
+            </button>
+            <button 
+              onClick={() => handleQuickSearch('average resolved per week')}
+              style={quickButtonStyle}
+            >
+              📈 Show weekly resolved chart
+            </button>
+            <button 
+              onClick={() => handleQuickSearch('weekly resolved for user1')}
+              style={quickButtonStyle}
+            >
+              📊 User1 weekly resolved
             </button>
           </div>
         </div>
