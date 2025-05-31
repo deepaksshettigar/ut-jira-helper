@@ -1,69 +1,169 @@
-// Simple conversational AI responses for Jira tasks
-// This can be replaced with actual LLM integration later
+// Enhanced conversational AI integration with backend LLM service
+// Integrates with the backend's intelligent filtering and analysis
 
 export class ConversationalHelper {
   constructor(tasks) {
     this.tasks = tasks || [];
+    this.apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
   }
 
-  // Analyze query and provide conversational response
-  getResponse(query) {
+  // Analyze query and provide conversational response using backend AI
+  async getResponse(query) {
+    try {
+      // Try to use backend AI service first
+      const response = await fetch(`${this.apiBaseUrl}/api/ai/query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: query,
+          context: 'Frontend search widget'
+        })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        return {
+          text: result.response,
+          taskCount: result.task_count,
+          suggestedActions: result.suggested_actions,
+          chartRecommendation: result.chart_recommendation
+        };
+      } else {
+        // Fallback to local processing
+        return this.getLocalResponse(query);
+      }
+    } catch (error) {
+      console.warn('Backend AI service unavailable, using local processing:', error.message);
+      // Fallback to local processing
+      return this.getLocalResponse(query);
+    }
+  }
+
+  // Local fallback processing (original implementation)
+  getLocalResponse(query) {
     const lowerQuery = query.toLowerCase();
     
     // Task creation queries
     if (lowerQuery.includes('create') || lowerQuery.includes('add') || lowerQuery.includes('new task')) {
-      return this.getCreateTaskResponse(query);
+      return {
+        text: this.getCreateTaskResponse(query),
+        taskCount: 0,
+        suggestedActions: ['Set assignee', 'Add description', 'Create task via API'],
+        chartRecommendation: null
+      };
     }
     
     // Task status queries
     if (lowerQuery.includes('in progress') || lowerQuery.includes('working on')) {
-      return this.getInProgressResponse();
+      const inProgressTasks = this.tasks.filter(task => task.status === 'In Progress');
+      return {
+        text: this.getInProgressResponse(),
+        taskCount: inProgressTasks.length,
+        suggestedActions: ['View task details', 'Update status', 'Mark as done'],
+        chartRecommendation: 'timeline'
+      };
     }
     
     if (lowerQuery.includes('to do') || lowerQuery.includes('todo') || lowerQuery.includes('pending')) {
-      return this.getToDoResponse();
+      const todoTasks = this.tasks.filter(task => task.status === 'To Do');
+      return {
+        text: this.getToDoResponse(),
+        taskCount: todoTasks.length,
+        suggestedActions: ['Start working', 'Assign tasks', 'Prioritize'],
+        chartRecommendation: 'table'
+      };
     }
     
     if (lowerQuery.includes('done') || lowerQuery.includes('completed') || lowerQuery.includes('finished')) {
-      return this.getDoneResponse();
+      const doneTasks = this.tasks.filter(task => task.status === 'Done');
+      return {
+        text: this.getDoneResponse(),
+        taskCount: doneTasks.length,
+        suggestedActions: ['View completed', 'Archive tasks', 'Generate report'],
+        chartRecommendation: 'pie'
+      };
     }
     
     // Summary queries
     if (lowerQuery.includes('summary') || lowerQuery.includes('overview') || lowerQuery.includes('status')) {
-      return this.getSummaryResponse();
+      return {
+        text: this.getSummaryResponse(),
+        taskCount: this.tasks.length,
+        suggestedActions: ['Show pie chart', 'View detailed breakdown', 'Export data'],
+        chartRecommendation: 'pie'
+      };
     }
     
     // Assignee queries
     if (lowerQuery.includes('user1') || lowerQuery.includes('assigned to user1')) {
-      return this.getAssigneeResponse('user1@example.com');
+      const userTasks = this.tasks.filter(task => task.assignee?.includes('user1'));
+      return {
+        text: this.getAssigneeResponse('user1@example.com'),
+        taskCount: userTasks.length,
+        suggestedActions: ['View user tasks', 'Check workload', 'Reassign tasks'],
+        chartRecommendation: 'bar'
+      };
     }
     
     if (lowerQuery.includes('user2') || lowerQuery.includes('assigned to user2')) {
-      return this.getAssigneeResponse('user2@example.com');
+      const userTasks = this.tasks.filter(task => task.assignee?.includes('user2'));
+      return {
+        text: this.getAssigneeResponse('user2@example.com'),
+        taskCount: userTasks.length,
+        suggestedActions: ['View user tasks', 'Check workload', 'Reassign tasks'],
+        chartRecommendation: 'bar'
+      };
     }
     
     // Workload queries
     if (lowerQuery.includes('workload') || lowerQuery.includes('how many') || lowerQuery.includes('count')) {
-      return this.getWorkloadResponse();
+      return {
+        text: this.getWorkloadResponse(),
+        taskCount: this.tasks.length,
+        suggestedActions: ['Show bar chart', 'Balance workload', 'View individual assignments'],
+        chartRecommendation: 'bar'
+      };
     }
     
     // Priority/urgent queries
     if (lowerQuery.includes('urgent') || lowerQuery.includes('priority') || lowerQuery.includes('important')) {
-      return this.getPriorityResponse();
+      return {
+        text: this.getPriorityResponse(),
+        taskCount: this.tasks.length,
+        suggestedActions: ['Filter by priority', 'View urgent tasks', 'Sort by importance'],
+        chartRecommendation: 'bar'
+      };
     }
     
     // Help queries
     if (lowerQuery.includes('help') || lowerQuery.includes('what can') || lowerQuery.includes('?')) {
-      return this.getHelpResponse();
+      return {
+        text: this.getHelpResponse(),
+        taskCount: this.tasks.length,
+        suggestedActions: ['Try sample query', 'View task summary', 'Create new task'],
+        chartRecommendation: null
+      };
     }
     
     // Search fallback
     const searchResults = this.searchTasks(query);
     if (searchResults.length > 0) {
-      return this.getSearchResultsResponse(query, searchResults);
+      return {
+        text: this.getSearchResultsResponse(query, searchResults),
+        taskCount: searchResults.length,
+        suggestedActions: ['View task details', 'Refine search', 'Filter results'],
+        chartRecommendation: 'table'
+      };
     }
     
-    return this.getDefaultResponse(query);
+    return {
+      text: this.getDefaultResponse(query),
+      taskCount: 0,
+      suggestedActions: ['Ask for help', 'Try different query', 'View all tasks'],
+      chartRecommendation: null
+    };
   }
 
   searchTasks(query) {
