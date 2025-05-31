@@ -2,37 +2,60 @@ import React, { useState } from 'react';
 import Widget from './Widget';
 import { ConversationalHelper } from '../utils/conversationalHelper';
 
-function SearchWidget({ tasks, onSearch }) {
+function SearchWidget({ tasks, onSearch, onChartRecommendation }) {
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [searchHistory, setSearchHistory] = useState([]);
   const [aiResponse, setAiResponse] = useState('');
+  const [chartRecommendation, setChartRecommendation] = useState(null);
+  const [suggestedActions, setSuggestedActions] = useState([]);
 
   const conversationalHelper = new ConversationalHelper(tasks);
 
-  const handleSearch = (searchQuery) => {
+  const handleSearch = async (searchQuery) => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
       setAiResponse('');
+      setChartRecommendation(null);
+      setSuggestedActions([]);
       return;
     }
 
-    // Get AI response
-    const response = conversationalHelper.getResponse(searchQuery);
-    setAiResponse(response);
+    try {
+      // Get AI response (which may use backend or fallback to local)
+      const response = await conversationalHelper.getResponse(searchQuery);
+      
+      // Update AI response state
+      setAiResponse(response.text);
+      setChartRecommendation(response.chartRecommendation);
+      setSuggestedActions(response.suggestedActions || []);
 
-    // Simple search logic for filtering tasks
-    const results = conversationalHelper.searchTasks(searchQuery);
-    setSearchResults(results);
-    
-    // Add to search history
-    if (!searchHistory.includes(searchQuery)) {
-      setSearchHistory(prev => [searchQuery, ...prev.slice(0, 4)]);
-    }
+      // Simple search logic for filtering tasks (local fallback)
+      const results = conversationalHelper.searchTasks(searchQuery);
+      setSearchResults(results);
+      
+      // Call chart recommendation callback if chart recommendation exists
+      if (response.chartRecommendation && onChartRecommendation) {
+        // Prepare chart data from search results
+        const chartData = prepareChartData(results);
+        onChartRecommendation(chartData, response.chartRecommendation);
+      }
+      
+      // Add to search history
+      if (!searchHistory.includes(searchQuery)) {
+        setSearchHistory(prev => [searchQuery, ...prev.slice(0, 4)]);
+      }
 
-    // Call parent callback if provided
-    if (onSearch) {
-      onSearch(searchQuery, results);
+      // Call parent callback if provided
+      if (onSearch) {
+        onSearch(searchQuery, results);
+      }
+    } catch (error) {
+      console.error('Error in search:', error);
+      // Fallback to basic search
+      const results = conversationalHelper.searchTasks(searchQuery);
+      setSearchResults(results);
+      setAiResponse(`Found ${results.length} tasks matching "${searchQuery}"`);
     }
   };
 
@@ -51,6 +74,19 @@ function SearchWidget({ tasks, onSearch }) {
     setQuery('');
     setSearchResults([]);
     setAiResponse('');
+    setChartRecommendation(null);
+    setSuggestedActions([]);
+  };
+
+  const prepareChartData = (results) => {
+    const statusData = {};
+    
+    results.forEach(task => {
+      const status = task.status || 'Unknown';
+      statusData[status] = (statusData[status] || 0) + 1;
+    });
+    
+    return statusData;
   };
 
   return (
@@ -115,6 +151,35 @@ function SearchWidget({ tasks, onSearch }) {
             <h4 style={sectionTitleStyle}>💬 AI Assistant:</h4>
             <div style={aiResponseStyle}>
               <pre style={aiResponseTextStyle}>{aiResponse}</pre>
+              
+              {/* Chart Recommendation */}
+              {chartRecommendation && (
+                <div style={chartRecommendationStyle}>
+                  <span style={chartIconStyle}>📊</span>
+                  <span>Recommended visualization: <strong>{chartRecommendation.charAt(0).toUpperCase() + chartRecommendation.slice(1)} Chart</strong></span>
+                </div>
+              )}
+              
+              {/* Suggested Actions */}
+              {suggestedActions.length > 0 && (
+                <div style={actionsContainerStyle}>
+                  <h5 style={actionsHeaderStyle}>Suggested Actions:</h5>
+                  <div style={actionsListStyle}>
+                    {suggestedActions.slice(0, 3).map((action, index) => (
+                      <button
+                        key={index}
+                        style={actionButtonStyle}
+                        onClick={() => {
+                          // Handle action click - for now just show in console
+                          console.log('Action clicked:', action);
+                        }}
+                      >
+                        {action}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -300,6 +365,50 @@ const aiResponseTextStyle = {
   color: '#333',
   whiteSpace: 'pre-wrap',
   wordWrap: 'break-word'
+};
+
+const chartRecommendationStyle = {
+  marginTop: '0.75rem',
+  padding: '0.5rem',
+  backgroundColor: '#e8f4f8',
+  border: '1px solid #b3d9e6',
+  borderRadius: '4px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem',
+  fontSize: '0.8rem'
+};
+
+const chartIconStyle = {
+  fontSize: '1rem'
+};
+
+const actionsContainerStyle = {
+  marginTop: '0.75rem'
+};
+
+const actionsHeaderStyle = {
+  margin: '0 0 0.5rem 0',
+  fontSize: '0.8rem',
+  fontWeight: '600',
+  color: '#333'
+};
+
+const actionsListStyle = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.5rem'
+};
+
+const actionButtonStyle = {
+  padding: '0.25rem 0.5rem',
+  border: '1px solid #0052CC',
+  borderRadius: '4px',
+  background: 'white',
+  color: '#0052CC',
+  fontSize: '0.75rem',
+  cursor: 'pointer',
+  transition: 'all 0.2s ease'
 };
 
 const getStatusBadgeStyle = (status) => {

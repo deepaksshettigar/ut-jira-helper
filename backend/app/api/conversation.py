@@ -8,7 +8,8 @@ from app.models.conversation import (
 )
 from app.models.task import TaskResponse
 from app.services.jira_service import jira_service
-from app.services.llm_service import llm_service
+from app.services.llm_service import llm_service, QueryAnalysis, FilterCriteria
+from app.config import settings
 import re
 from datetime import datetime
 import uuid
@@ -29,87 +30,262 @@ class ConversationalAI:
     def process_query(self, query: str, context: Optional[str] = None) -> ConversationResponse:
         """Process a natural language query using LLM or fallback to pattern matching"""
         
-        # Get current task data for context
+        # First, analyze the query to understand intent and extract filtering criteria
+        query_analysis = self.llm_service.analyze_query(query, context or "")
+        
+        # Get filtered task data based on analysis
         try:
-            tasks_data = self.jira_service.get_tasks()
+            if query_analysis.filter_criteria and self._has_meaningful_criteria(query_analysis.filter_criteria):
+                tasks_data = self.jira_service.get_tasks(filter_criteria=query_analysis.filter_criteria)
+            else:
+                tasks_data = self.jira_service.get_tasks()
         except Exception:
             tasks_data = []
         
-        # Try LLM first if available
-        if self.llm_service.is_available():
-            return self._process_with_llm(query, context, tasks_data)
+        # Generate response based on the intent and data
+        response = self._generate_intelligent_response(query, query_analysis, tasks_data, context)
+        
+        return response
+    
+    def _has_meaningful_criteria(self, criteria: FilterCriteria) -> bool:
+        """Check if filter criteria contains meaningful filtering information"""
+        return any([
+            criteria.status,
+            criteria.assignee,
+            criteria.keywords,
+            criteria.time_frame,
+            criteria.priority
+        ])
+    
+    def _generate_intelligent_response(self, query: str, analysis: QueryAnalysis, tasks_data: List[dict], context: Optional[str]) -> ConversationResponse:
+        """Generate response based on query analysis and filtered data"""
+        
+        # Handle different intents
+        if analysis.intent == "create":
+            return self._handle_task_creation(query, tasks_data)
+        elif analysis.intent == "summarize":
+            return self._handle_summary_with_analysis(query, analysis, tasks_data)
+        elif analysis.intent == "compare":
+            return self._handle_comparison_query(query, analysis, tasks_data)
+        elif analysis.intent == "analyze":
+            return self._handle_analysis_query(query, analysis, tasks_data)
+        else:  # filter intent
+            return self._handle_filter_query(query, analysis, tasks_data)
+    
+    def _handle_summary_with_analysis(self, query: str, analysis: QueryAnalysis, tasks_data: List[dict]) -> ConversationResponse:
+        """Handle summary queries with enhanced analysis"""
+        task_analysis = self.analyze_tasks(tasks_data)
+        
+        # Build response based on filtering criteria
+        response_parts = [f"📊 Summary of {len(tasks_data)} filtered tasks:"]
+        
+        if analysis.filter_criteria.status:
+            response_parts.append(f"📌 Status filter: {', '.join(analysis.filter_criteria.status)}")
+        
+        if analysis.filter_criteria.assignee:
+            response_parts.append(f"👤 Assignee filter: {', '.join(analysis.filter_criteria.assignee)}")
+        
+        if analysis.filter_criteria.keywords:
+            response_parts.append(f"🔍 Keywords: {', '.join(analysis.filter_criteria.keywords)}")
+        
+        response_parts.append("")  # Empty line
+        
+        for status, count in task_analysis.status_breakdown.items():
+            emoji = "✅" if status == "Done" else "🔄" if status == "In Progress" else "📋"
+            response_parts.append(f"{emoji} {status}: {count}")
+        
+        response_parts.append(f"\n🎯 Completion Rate: {task_analysis.completion_percentage:.1f}%")
+        
+        if task_analysis.insights:
+            response_parts.append("\n💡 Insights:")
+            for insight in task_analysis.insights:
+                response_parts.append(f"• {insight}")
+        
+        # Add visualization recommendation
+        if analysis.visualization_type:
+            response_parts.append(f"\n📈 Recommended chart: {analysis.visualization_type.title()} chart")
+        
+        suggested_actions = ["View detailed breakdown", "Change filters", "Export data"]
+        if analysis.visualization_type:
+            suggested_actions.insert(0, f"Show {analysis.visualization_type} chart")
+        
+        return ConversationResponse(
+            response="\n".join(response_parts),
+            query=query,
+            task_count=len(tasks_data),
+            suggested_actions=suggested_actions,
+            chart_recommendation=analysis.visualization_type
+        )
+    
+    def _handle_filter_query(self, query: str, analysis: QueryAnalysis, tasks_data: List[dict]) -> ConversationResponse:
+        """Handle filtering queries with intelligent responses"""
+        
+        if not tasks_data:
+            filter_desc = self._describe_filters(analysis.filter_criteria)
+            return ConversationResponse(
+                response=f"No tasks found matching your criteria{filter_desc}.",
+                query=query,
+                task_count=0,
+                suggested_actions=["Adjust filters", "View all tasks", "Try different search"]
+            )
+        
+        # Build response describing what was found
+        response_parts = []
+        filter_desc = self._describe_filters(analysis.filter_criteria)
+        
+        if filter_desc:
+            response_parts.append(f"Found {len(tasks_data)} tasks{filter_desc}:")
         else:
-            # Fallback to pattern matching
-            return self._process_with_patterns(query, context, tasks_data)
+            response_parts.append(f"Found {len(tasks_data)} tasks:")
+        
+        response_parts.append("")  # Empty line
+        
+        # Show tasks grouped by status if multiple statuses
+        status_groups = {}
+        for task in tasks_data:
+            status = task.get('status', 'Unknown')
+            if status not in status_groups:
+                status_groups[status] = []
+            status_groups[status].append(task)
+        
+        for status, tasks in status_groups.items():
+            emoji = "✅" if status == "Done" else "🔄" if status == "In Progress" else "📋"
+            response_parts.append(f"{emoji} **{status}** ({len(tasks)} tasks):")
+            for task in tasks[:3]:  # Show first 3 tasks per status
+                response_parts.append(f"  • {task['id']}: {task['title']}")
+            if len(tasks) > 3:
+                response_parts.append(f"  ... and {len(tasks) - 3} more")
+            response_parts.append("")
+        
+        # Add chart recommendation
+        if analysis.visualization_type:
+            response_parts.append(f"📈 Suggested visualization: {analysis.visualization_type.title()} chart")
+        
+        suggested_actions = ["View task details", "Refine filters", "Change grouping"]
+        if analysis.visualization_type:
+            suggested_actions.insert(0, f"Show {analysis.visualization_type} chart")
+        
+        return ConversationResponse(
+            response="\n".join(response_parts),
+            query=query,
+            task_count=len(tasks_data),
+            suggested_actions=suggested_actions,
+            chart_recommendation=analysis.visualization_type
+        )
+    
+    def _handle_comparison_query(self, query: str, analysis: QueryAnalysis, tasks_data: List[dict]) -> ConversationResponse:
+        """Handle comparison queries"""
+        # For comparison, we typically want to compare different groups
+        response_parts = [f"📊 Comparison based on {len(tasks_data)} tasks:"]
+        
+        # Compare by status
+        status_breakdown = {}
+        assignee_breakdown = {}
+        
+        for task in tasks_data:
+            status = task.get('status', 'Unknown')
+            assignee = task.get('assignee', 'Unassigned')
+            status_breakdown[status] = status_breakdown.get(status, 0) + 1
+            assignee_breakdown[assignee] = assignee_breakdown.get(assignee, 0) + 1
+        
+        response_parts.append("\n🏷️ **Status Distribution:**")
+        for status, count in sorted(status_breakdown.items()):
+            percentage = (count / len(tasks_data)) * 100
+            response_parts.append(f"  • {status}: {count} tasks ({percentage:.1f}%)")
+        
+        response_parts.append("\n👥 **Assignee Distribution:**")
+        for assignee, count in sorted(assignee_breakdown.items()):
+            percentage = (count / len(tasks_data)) * 100
+            response_parts.append(f"  • {assignee}: {count} tasks ({percentage:.1f}%)")
+        
+        return ConversationResponse(
+            response="\n".join(response_parts),
+            query=query,
+            task_count=len(tasks_data),
+            suggested_actions=["Show bar chart", "View details", "Export comparison"],
+            chart_recommendation="bar"
+        )
+    
+    def _handle_analysis_query(self, query: str, analysis: QueryAnalysis, tasks_data: List[dict]) -> ConversationResponse:
+        """Handle analysis queries with insights"""
+        task_analysis = self.analyze_tasks(tasks_data)
+        
+        response_parts = [f"🔍 Analysis of {len(tasks_data)} tasks:"]
+        
+        # Add workload analysis
+        assignee_workload = {}
+        for task in tasks_data:
+            assignee = task.get('assignee', 'Unassigned')
+            assignee_workload[assignee] = assignee_workload.get(assignee, 0) + 1
+        
+        if len(assignee_workload) > 1:
+            response_parts.append("\n⚖️ **Workload Balance:**")
+            avg_workload = len(tasks_data) / len(assignee_workload)
+            for assignee, count in sorted(assignee_workload.items()):
+                if count > avg_workload * 1.5:
+                    response_parts.append(f"  • {assignee}: {count} tasks ⚠️ (Above average)")
+                elif count < avg_workload * 0.5:
+                    response_parts.append(f"  • {assignee}: {count} tasks 📉 (Below average)")
+                else:
+                    response_parts.append(f"  • {assignee}: {count} tasks ✅ (Balanced)")
+        
+        response_parts.append(f"\n📈 **Progress Metrics:**")
+        response_parts.append(f"  • Completion Rate: {task_analysis.completion_percentage:.1f}%")
+        
+        if task_analysis.insights:
+            response_parts.append("\n💡 **Key Insights:**")
+            for insight in task_analysis.insights:
+                response_parts.append(f"  • {insight}")
+        
+        return ConversationResponse(
+            response="\n".join(response_parts),
+            query=query,
+            task_count=len(tasks_data),
+            suggested_actions=["Show timeline chart", "View trends", "Export analysis"],
+            chart_recommendation="timeline"
+        )
+    
+    def _describe_filters(self, criteria: FilterCriteria) -> str:
+        """Create a human-readable description of applied filters"""
+        filter_parts = []
+        
+        if criteria.status:
+            if len(criteria.status) == 1:
+                filter_parts.append(f"with status '{criteria.status[0]}'")
+            else:
+                filter_parts.append(f"with status in {criteria.status}")
+        
+        if criteria.assignee:
+            if len(criteria.assignee) == 1:
+                filter_parts.append(f"assigned to {criteria.assignee[0]}")
+            else:
+                filter_parts.append(f"assigned to {', '.join(criteria.assignee)}")
+        
+        if criteria.keywords:
+            filter_parts.append(f"containing '{', '.join(criteria.keywords)}'")
+        
+        if criteria.time_frame:
+            filter_parts.append(f"from {criteria.time_frame}")
+        
+        if criteria.priority:
+            filter_parts.append(f"with {criteria.priority} priority")
+        
+        if filter_parts:
+            return " " + " and ".join(filter_parts)
+        
+        return ""
     
     def _process_with_llm(self, query: str, context: Optional[str], tasks_data: List[dict]) -> ConversationResponse:
-        """Process query using local LLM model"""
-        try:
-            # Generate response using LLM
-            llm_response = self.llm_service.generate_response(
-                prompt=query,
-                context=context or "",
-                tasks_data=tasks_data
-            )
-            
-            # Determine suggested actions based on query content
-            suggested_actions = self._get_suggested_actions(query, tasks_data)
-            
-            # Count relevant tasks
-            task_count = self._count_relevant_tasks(query, tasks_data)
-            
-            return ConversationResponse(
-                response=llm_response,
-                query=query,
-                task_count=task_count,
-                suggested_actions=suggested_actions
-            )
-            
-        except Exception as e:
-            # Fallback to pattern matching if LLM fails
-            return self._process_with_patterns(query, context, tasks_data)
+        """Process query using local LLM model - Legacy method for backward compatibility"""
+        # Use the new intelligent processing
+        query_analysis = self.llm_service.analyze_query(query, context or "")
+        return self._generate_intelligent_response(query, query_analysis, tasks_data, context)
     
     def _process_with_patterns(self, query: str, context: Optional[str], tasks_data: List[dict]) -> ConversationResponse:
-        """Fallback pattern matching processing"""
-        lower_query = query.lower()
-        
-        # Task creation queries
-        if any(keyword in lower_query for keyword in ['create', 'add', 'new task']):
-            return self._handle_task_creation(query, tasks_data)
-        
-        # Status-specific queries
-        if any(keyword in lower_query for keyword in ['in progress', 'working on']):
-            return self._handle_status_query('In Progress', query, tasks_data)
-        
-        if any(keyword in lower_query for keyword in ['to do', 'todo', 'pending']):
-            return self._handle_status_query('To Do', query, tasks_data)
-        
-        if any(keyword in lower_query for keyword in ['done', 'completed', 'finished']):
-            return self._handle_status_query('Done', query, tasks_data)
-        
-        # Summary and analysis queries
-        if any(keyword in lower_query for keyword in ['summary', 'overview', 'status']):
-            return self._handle_summary_query(query, tasks_data)
-        
-        # Assignee queries
-        for task in tasks_data:
-            if task.get('assignee') and task['assignee'].lower() in lower_query:
-                return self._handle_assignee_query(task['assignee'], query, tasks_data)
-        
-        # Workload distribution queries
-        if any(keyword in lower_query for keyword in ['workload', 'distribution', 'how many', 'count']):
-            return self._handle_workload_query(query, tasks_data)
-        
-        # Help queries
-        if any(keyword in lower_query for keyword in ['help', 'what can', '?']):
-            return self._handle_help_query(query, tasks_data)
-        
-        # Search fallback
-        search_results = self._search_tasks(query, tasks_data)
-        if search_results:
-            return self._handle_search_results(query, search_results)
-        
-        return self._handle_default_query(query, tasks_data)
+        """Fallback pattern matching processing - Legacy method for backward compatibility"""
+        # Use new analysis but with pattern-based approach
+        query_analysis = self.llm_service.analyze_query(query, context or "")
+        return self._generate_intelligent_response(query, query_analysis, tasks_data, context)
     
     def _get_suggested_actions(self, query: str, tasks_data: List[dict]) -> List[str]:
         """Generate suggested actions based on query"""
@@ -240,7 +416,8 @@ Total Tasks: {analysis.total_tasks}
             response=response,
             query=query,
             task_count=analysis.total_tasks,
-            suggested_actions=["View detailed breakdown", "Check assignee workload", "Export report"]
+            suggested_actions=["View detailed breakdown", "Check assignee workload", "Export report"],
+            chart_recommendation="pie"
         )
     
     def _handle_assignee_query(self, assignee: str, query: str, tasks_data: List[dict]) -> ConversationResponse:

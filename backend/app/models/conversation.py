@@ -21,6 +21,7 @@ class ConversationResponse(BaseModel):
     query: str = Field(..., description="Original query that was processed")
     task_count: Optional[int] = Field(None, description="Number of tasks referenced in response")
     suggested_actions: Optional[List[str]] = Field(default_factory=list, description="Suggested follow-up actions")
+    chart_recommendation: Optional[str] = Field(None, description="Recommended chart type for visualization")
     
     class Config:
         json_schema_extra = {
@@ -28,7 +29,8 @@ class ConversationResponse(BaseModel):
                 "response": "Currently, there are 2 tasks in progress: JIRA-1 (Implement login page) and JIRA-4 (Update API documentation).",
                 "query": "What tasks are in progress?",
                 "task_count": 2,
-                "suggested_actions": ["View task details", "Check assignees", "Get summary"]
+                "suggested_actions": ["View task details", "Check assignees", "Get summary"],
+                "chart_recommendation": "pie"
             }
         }
 
