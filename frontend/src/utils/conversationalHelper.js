@@ -404,7 +404,7 @@ ${analytics.total_resolved > 0 ?
         text: responseText,
         taskCount: analytics.total_resolved,
         suggestedActions: ['View detailed breakdown', 'Export analytics', 'Compare assignees'],
-        chartRecommendation: 'weekly_resolved',
+        chartRecommendation: 'weekly_trend',
         chartData: analytics
       };
     } catch (error) {

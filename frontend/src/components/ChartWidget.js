@@ -20,6 +20,8 @@ function ChartWidget({ data, chartType, title }) {
         return renderTimelineChart(data);
       case 'weekly_resolved':
         return renderWeeklyResolvedChart(data);
+      case 'weekly_trend':
+        return renderWeeklyTrendChart(data);
       case 'table':
         return renderTable(data);
       default:
@@ -99,6 +101,154 @@ function ChartWidget({ data, chartType, title }) {
             </div>
           ))}
         </div>
+      </div>
+    );
+  };
+
+  const renderWeeklyTrendChart = (data) => {
+    // Handle weekly resolved data structure for trend chart
+    const weeklyData = data.weekly_breakdown || data;
+    const assigneeInfo = data.assignee ? ` for ${data.assignee}` : '';
+    const averageInfo = data.average_per_week ? ` (Avg: ${data.average_per_week}/week)` : '';
+    const averageValue = data.average_per_week || 0;
+    
+    const maxValue = Math.max(...Object.values(weeklyData), averageValue);
+    const weekEntries = Object.entries(weeklyData);
+    
+    return (
+      <div style={chartContainerStyle}>
+        <h4 style={chartTitleStyle}>
+          Weekly Resolved Tasks Trend{assigneeInfo}{averageInfo}
+        </h4>
+        <div style={trendChartStyle}>
+          <svg width="100%" height="200" style={svgStyle}>
+            {/* Background grid lines */}
+            {[0, 25, 50, 75, 100].map(percent => (
+              <line
+                key={percent}
+                x1="40"
+                y1={30 + (percent / 100) * 140}
+                x2="95%"
+                y2={30 + (percent / 100) * 140}
+                stroke="#f0f0f0"
+                strokeWidth="1"
+              />
+            ))}
+            
+            {/* Y-axis labels */}
+            {[0, 1, 2, 3, Math.ceil(maxValue)].map((value, index) => (
+              <text
+                key={value}
+                x="30"
+                y={175 - (value / maxValue) * 140}
+                fontSize="10"
+                fill="#666"
+                textAnchor="end"
+              >
+                {value}
+              </text>
+            ))}
+            
+            {/* Average line */}
+            {averageValue > 0 && (
+              <>
+                <line
+                  x1="40"
+                  y1={175 - (averageValue / maxValue) * 140}
+                  x2="95%"
+                  y2={175 - (averageValue / maxValue) * 140}
+                  stroke="#ff6b35"
+                  strokeWidth="2"
+                  strokeDasharray="5,5"
+                />
+                <text
+                  x="50"
+                  y={170 - (averageValue / maxValue) * 140}
+                  fontSize="10"
+                  fill="#ff6b35"
+                  fontWeight="bold"
+                >
+                  Avg: {averageValue}
+                </text>
+              </>
+            )}
+            
+            {/* Data line and points */}
+            {weekEntries.length > 1 && (
+              <polyline
+                points={weekEntries.map((week, index) => {
+                  const x = 40 + (index / (weekEntries.length - 1)) * (300 - 80);
+                  const y = 175 - (week[1] / maxValue) * 140;
+                  return `${x},${y}`;
+                }).join(' ')}
+                fill="none"
+                stroke="#0052CC"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+            
+            {/* Data points */}
+            {weekEntries.map((week, index) => {
+              const x = 40 + (index / Math.max(weekEntries.length - 1, 1)) * (300 - 80);
+              const y = 175 - (week[1] / maxValue) * 140;
+              
+              return (
+                <g key={week[0]}>
+                  <circle
+                    cx={x}
+                    cy={y}
+                    r="4"
+                    fill="#0052CC"
+                    stroke="white"
+                    strokeWidth="2"
+                  />
+                  <text
+                    x={x}
+                    y={y - 10}
+                    fontSize="10"
+                    fill="#333"
+                    textAnchor="middle"
+                    fontWeight="bold"
+                  >
+                    {week[1]}
+                  </text>
+                </g>
+              );
+            })}
+            
+            {/* X-axis labels */}
+            {weekEntries.map((week, index) => {
+              const x = 40 + (index / Math.max(weekEntries.length - 1, 1)) * (300 - 80);
+              const label = week[0].replace('Week ', 'W').replace(' ago', '');
+              
+              return (
+                <text
+                  key={week[0]}
+                  x={x}
+                  y={195}
+                  fontSize="9"
+                  fill="#666"
+                  textAnchor="middle"
+                >
+                  {label}
+                </text>
+              );
+            })}
+            
+            {/* Axis lines */}
+            <line x1="40" y1="30" x2="40" y2="175" stroke="#ccc" strokeWidth="1" />
+            <line x1="40" y1="175" x2="95%" y2="175" stroke="#ccc" strokeWidth="1" />
+          </svg>
+        </div>
+        {data.total_resolved !== undefined && (
+          <div style={weeklyStatsStyle}>
+            <p><strong>Total Resolved:</strong> {data.total_resolved} tasks</p>
+            <p><strong>Period:</strong> {data.weeks_analyzed} weeks</p>
+            <p><strong>Trend:</strong> {averageValue > 0 ? 'Consistent progress' : 'No completions yet'}</p>
+          </div>
+        )}
       </div>
     );
   };
@@ -402,6 +552,19 @@ const weeklyStatsStyle = {
   borderTop: '1px solid #eee',
   paddingTop: '0.75rem',
   marginTop: '0.75rem'
+};
+
+// Trend chart styles
+const trendChartStyle = {
+  marginBottom: '1rem',
+  backgroundColor: '#fff',
+  borderRadius: '4px',
+  border: '1px solid #e0e0e0'
+};
+
+const svgStyle = {
+  display: 'block',
+  margin: '0 auto'
 };
 
 export default ChartWidget;
