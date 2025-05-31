@@ -1,4 +1,10 @@
-from llama_cpp import Llama
+try:
+    from llama_cpp import Llama
+    LLAMA_AVAILABLE = True
+except ImportError:
+    LLAMA_AVAILABLE = False
+    Llama = None
+
 from typing import Optional, Dict, List, Any
 from app.config import settings
 import logging
@@ -33,6 +39,10 @@ class LLMService:
 
     def _initialize_model(self):
         """Initialize the LLM model from GGUF file"""
+        if not LLAMA_AVAILABLE:
+            logger.warning("llama-cpp-python not available. Using fallback responses.")
+            return
+        
         try:
             self._ensure_model()
             resolved_path = os.path.abspath(settings.llm_model_path) if settings.llm_model_path else None
