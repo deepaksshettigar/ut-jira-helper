@@ -9,6 +9,7 @@ from app.models.conversation import (
 from app.models.task import TaskResponse
 from app.services.jira_service import jira_service
 from app.services.llm_service import llm_service, QueryAnalysis, FilterCriteria
+from app.config import settings
 import re
 from datetime import datetime
 import uuid
