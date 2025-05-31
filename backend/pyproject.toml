@@ -7,7 +7,7 @@ packages = [{include = "app"}]
 readme = "../README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.8,<4.0"
+python = ">=3.11,<4.0"
 fastapi = "^0.104.1"
 uvicorn = "^0.24.0"
 pydantic = "^2.4.2"
@@ -17,7 +17,9 @@ python-dotenv = "^1.0.0"
 httpx = "^0.25.1"
 python-multipart = "^0.0.20"
 aiofiles = "^24.1.0"
-llama-cpp-python = "^0.2.11"
+llama-cpp-python = "^0.3.9"
+numpy = "^2.2.6"
+huggingface-hub = "^0.32.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.0.0"
@@ -26,5 +28,5 @@ pytest = "^7.0.0"
 start = "run:main"
 
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0"]
+requires = ["poetry-core>=2.0.0,<3.0.0", "setuptools", "wheel", "Cython"]
 build-backend = "poetry.core.masonry.api"

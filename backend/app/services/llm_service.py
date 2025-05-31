@@ -1,8 +1,9 @@
 from llama_cpp import Llama
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from app.config import settings
 import logging
 import os
+from huggingface_hub import hf_hub_download
 
 logger = logging.getLogger(__name__)
 
@@ -13,33 +14,51 @@ class LLMService:
         self.llm = None
         self._initialize_model()
     
+    def _ensure_model(self):
+        """Ensure the GGUF model is present locally, download from Hugging Face if needed."""
+        model_path = settings.llm_model_path
+        model_repo = getattr(settings, "llm_model_repo", None)
+        model_filename = getattr(settings, "llm_model_filename", None)
+        if not os.path.exists(model_path) and model_repo and model_filename:
+            logger.info(f"Downloading LLM model {model_filename} from repo {model_repo} ...")
+            downloaded_path = hf_hub_download(
+                repo_id=model_repo,
+                filename=model_filename,
+                local_dir=os.path.dirname(model_path),
+                local_dir_use_symlinks=False,
+                resume_download=True,
+            )
+            logger.info(f"Model downloaded to {downloaded_path}")
+            # Optionally, move or symlink to model_path if needed
+
     def _initialize_model(self):
         """Initialize the LLM model from GGUF file"""
         try:
+            self._ensure_model()
+            resolved_path = os.path.abspath(settings.llm_model_path) if settings.llm_model_path else None
+            logger.info(f"[LLMService] LLM_MODEL_PATH from settings: {settings.llm_model_path}")
+            logger.info(f"[LLMService] Resolved absolute model path: {resolved_path}")
             if not settings.llm_model_path or not os.path.exists(settings.llm_model_path):
-                logger.warning(f"LLM model not found at {settings.llm_model_path}. Using fallback responses.")
+                logger.warning(f"LLM model not found at {settings.llm_model_path} (absolute: {resolved_path}). Using fallback responses.")
                 return
-            
-            logger.info(f"Loading LLM model from {settings.llm_model_path}")
-            
+            logger.info(f"Loading LLM model from {settings.llm_model_path} (absolute: {resolved_path})")
             self.llm = Llama(
                 model_path=settings.llm_model_path,
                 n_ctx=settings.llm_context_size,
                 verbose=False,
                 n_threads=4  # Adjust based on your system
             )
-            
             logger.info("LLM model loaded successfully")
-            
         except Exception as e:
-            logger.error(f"Failed to load LLM model: {e}")
+            import traceback
+            logger.error(f"Failed to load LLM model: {e}\nTraceback:\n{traceback.format_exc()}")
             self.llm = None
     
     def is_available(self) -> bool:
         """Check if LLM is available"""
         return self.llm is not None
     
-    def generate_response(self, prompt: str, context: str = "", tasks_data: List[Dict] = None) -> str:
+    def generate_response(self, prompt: str, context: str = "", tasks_data: Optional[List[Dict[str, Any]]] = None) -> str:
         """Generate response using the local LLM model"""
         if not self.is_available():
             return self._generate_fallback_response(prompt, tasks_data or [])
@@ -67,7 +86,7 @@ class LLMService:
             logger.error(f"Error generating LLM response: {e}")
             return self._generate_fallback_response(prompt, tasks_data or [])
     
-    def _build_prompt(self, query: str, context: str, tasks_data: List[Dict]) -> str:
+    def _build_prompt(self, query: str, context: str, tasks_data: List[Dict[str, Any]]) -> str:
         """Build a comprehensive prompt for the LLM"""
         
         # Task data summary
@@ -127,7 +146,7 @@ Response:"""
         
         return response
     
-    def _generate_fallback_response(self, prompt: str, tasks_data: List[Dict]) -> str:
+    def _generate_fallback_response(self, prompt: str, tasks_data: List[Dict[str, Any]]) -> str:
         """Generate fallback response when LLM is not available"""
         lower_prompt = prompt.lower()
         

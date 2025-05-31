@@ -41,6 +41,7 @@ __pycache__/
 /backend/htmlcov/
 /backend/.coverage
 /backend/.tox/
+/backend/models/*.gguf
 
 # IDE specific files
 .idea/
