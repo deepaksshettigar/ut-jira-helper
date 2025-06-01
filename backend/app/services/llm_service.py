@@ -294,36 +294,37 @@ Analysis:"""
         return [item for item in items if item and item.lower() != 'none']
     
     def is_available(self) -> bool:
-        """Check if LLM is available"""
-        return self.llm is not None
+        """Check if LLM service is available and working"""
+        try:
+            if not self.llm:
+                logger.warning("LLM model not loaded")
+                return False
+            
+            # Test with a simple query using correct parameter names
+            test_response = self.generate_response("Test", max_length=10, temperature=0.1)
+            return test_response is not None and len(test_response.strip()) > 0
+        except Exception as e:
+            logger.error(f"LLM availability check failed: {e}")
+            return False
     
-    def generate_response(self, prompt: str, context: str = "", tasks_data: Optional[List[Dict[str, Any]]] = None) -> str:
-        """Generate response using the local LLM model"""
-        if not self.is_available():
-            return self._generate_fallback_response(prompt, tasks_data or [])
+    def generate_response(self, prompt: str, max_length: int = 200, temperature: float = 0.7) -> str:
+        """Generate response using the loaded model"""
+        if not self.llm:
+            raise RuntimeError("Model not loaded")
         
         try:
-            # Build the full prompt with context
-            full_prompt = self._build_prompt(prompt, context, tasks_data or [])
-            
-            # Generate response
             response = self.llm(
-                full_prompt,
-                max_tokens=settings.llm_max_tokens,
-                temperature=settings.llm_temperature,
-                stop=["Human:", "User:", "\n\n"],
-                echo=False
+                prompt,
+                max_tokens=max_length,
+                temperature=temperature,
+                echo=False,
+                stop=["Human:", "Assistant:", "\n\n"]
             )
             
-            # Extract the generated text
-            generated_text = response['choices'][0]['text'].strip()
-            
-            # Clean up the response
-            return self._clean_response(generated_text)
-            
+            return response['choices'][0]['text'].strip()
         except Exception as e:
-            logger.error(f"Error generating LLM response: {e}")
-            return self._generate_fallback_response(prompt, tasks_data or [])
+            logger.error(f"Error generating response: {e}")
+            raise
     
     def _build_prompt(self, query: str, context: str, tasks_data: List[Dict[str, Any]]) -> str:
         """Build a comprehensive prompt for the LLM"""

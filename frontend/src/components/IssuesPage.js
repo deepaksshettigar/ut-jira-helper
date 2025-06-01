@@ -454,7 +454,7 @@ const chatPanelStyle = {
   padding: '1rem',
   boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
   height: 'fit-content',
-  maxHeight: '80vh',
+  maxHeight: '100%',
   display: 'flex',
   flexDirection: 'column'
 };
