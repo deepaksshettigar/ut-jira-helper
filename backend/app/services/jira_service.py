@@ -54,8 +54,8 @@ class JiraService:
         """Check if Jira is properly configured"""
         return self.jira_client is not None
     
-    def get_tasks(self, status: Optional[str] = None, assignee: Optional[str] = None, filter_criteria: Optional[FilterCriteria] = None) -> List[Dict[str, Any]]:
-        """Get tasks from Jira with optional filtering"""
+    def get_tasks(self, status: Optional[str] = None, assignee: Optional[str] = None, filter_criteria: Optional[FilterCriteria] = None, max_results: int = 100) -> List[Dict[str, Any]]:
+        """Get tasks from Jira with optional filtering and pagination"""
         if not self.is_configured():
             return []
         
@@ -77,19 +77,44 @@ class JiraService:
             
             jql = " AND ".join(jql_parts) if jql_parts else "ORDER BY created DESC"
             
-            # Execute search
-            issues = self.jira_client.search_issues(jql, maxResults=100, expand='changelog')
+            # Execute search with pagination to get all results
+            all_tasks = []
+            start_at = 0
+            batch_size = 50  # Use Jira's default safe batch size
             
-            tasks = []
-            for issue in issues:
-                task = self._convert_issue_to_task(issue)
-                tasks.append(task)
+            while len(all_tasks) < max_results:
+                # Calculate how many more results we need
+                remaining_needed = max_results - len(all_tasks)
+                current_batch_size = min(batch_size, remaining_needed)
+                
+                # Execute batch search
+                issues = self.jira_client.search_issues(
+                    jql, 
+                    startAt=start_at, 
+                    maxResults=current_batch_size, 
+                    expand='changelog'
+                )
+                
+                # Convert issues to tasks for this batch
+                batch_tasks = []
+                for issue in issues:
+                    task = self._convert_issue_to_task(issue)
+                    batch_tasks.append(task)
+                
+                all_tasks.extend(batch_tasks)
+                
+                # Check if we've retrieved all available issues
+                if len(batch_tasks) < current_batch_size or start_at + len(batch_tasks) >= issues.total:
+                    break
+                
+                # Move to next batch
+                start_at += len(batch_tasks)
             
             # Apply additional filtering for criteria not supported by JQL
             if filter_criteria:
-                tasks = self._apply_additional_filtering(tasks, filter_criteria)
+                all_tasks = self._apply_additional_filtering(all_tasks, filter_criteria)
             
-            return tasks
+            return all_tasks[:max_results]  # Ensure we don't exceed requested max_results
             
         except Exception as e:
             logger.error("Error fetching tasks from Jira: %s", e)
@@ -308,7 +333,7 @@ class JiraService:
 
     def get_weekly_resolved_average(self, assignee: Optional[str] = None, weeks: int = 4) -> Dict[str, Any]:
         """Calculate average resolved tasks per week with optional assignee filter"""
-        all_tasks = self.get_tasks()
+        all_tasks = self.get_tasks(max_results=1000)  # Get more tasks for analytics
         
         # Filter by assignee if provided
         if assignee:

@@ -41,6 +41,9 @@ const IssuesPage = () => {
   const [activeTab, setActiveTab] = useState('table'); // Add tab state
   const [chartGroupBy, setChartGroupBy] = useState('duedate'); // Chart grouping selection
   const [totalCount, setTotalCount] = useState(0); // Store total count from backend
+  const [currentPage, setCurrentPage] = useState(1); // Current page number
+  const [pageSize, setPageSize] = useState(50); // Items per page
+  const [lastQuery, setLastQuery] = useState(''); // Store last query for pagination
 
   const chatEndRef = useRef(null);
   const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
@@ -59,27 +62,39 @@ const IssuesPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleNaturalLanguageQuery = async (query) => {
+  const handleNaturalLanguageQuery = async (query, page = 1) => {
     if (!query.trim()) return;
 
     setLoading(true);
     setError(null);
     
-    // Add user message to chat
-    const userMessage = {
-      id: Date.now(),
-      type: 'user',
-      content: query,
-      timestamp: new Date()
-    };
-    setChatHistory(prev => [...prev, userMessage]);
+    // If it's a new query, reset to page 1
+    if (query !== lastQuery) {
+      setCurrentPage(1);
+      page = 1;
+      setLastQuery(query);
+    } else {
+      setCurrentPage(page);
+    }
+    
+    // Add user message to chat only for new queries
+    if (query !== lastQuery) {
+      const userMessage = {
+        id: Date.now(),
+        type: 'user',
+        content: query,
+        timestamp: new Date()
+      };
+      setChatHistory(prev => [...prev, userMessage]);
+    }
 
     try {
+      const startAt = (page - 1) * pageSize;
       const response = await axios.post(`${apiBaseUrl}/api/jql/convert`, {
         natural_language: query,
         context: 'Jira Issues List',
-        max_results: 50,
-        start_at: 0
+        max_results: pageSize,
+        start_at: startAt
       });
 
       const data = response.data;
@@ -90,45 +105,52 @@ const IssuesPage = () => {
       setTotalCount(data.total_count);
       setError('');
       
-      // Add assistant response to chat
-      const assistantMessage = {
-        id: Date.now() + 1,
-        type: 'assistant',
-        content: data.total_count > data.issues.length 
-          ? `Found ${data.total_count} issues (showing first ${data.issues.length}).`
-          : `Found ${data.issues.length} issues.`,
-        jql: data.jql_query,
-        timestamp: new Date()
-      };
-      setChatHistory(prev => [...prev, assistantMessage]);
+      // Add assistant response to chat only for new queries
+      if (query !== lastQuery) {
+        const assistantMessage = {
+          id: Date.now() + 1,
+          type: 'assistant',
+          content: data.total_count > pageSize 
+            ? `Found ${data.total_count} issues total. Showing page ${page} (${data.issues.length} results).`
+            : `Found ${data.issues.length} issues.`,
+          jql: data.jql_query,
+          timestamp: new Date()
+        };
+        setChatHistory(prev => [...prev, assistantMessage]);
+      }
 
     } catch (err) {
       console.error('Error processing natural language query:', err);
       setError('Failed to process your query. Please try again.');
       
-      const errorMessage = {
-        id: Date.now() + 1,
-        type: 'error',
-        content: 'Sorry, I couldn\'t process that query. Please try rephrasing it.',
-        timestamp: new Date()
-      };
-      setChatHistory(prev => [...prev, errorMessage]);
+      // Add error message only for new queries
+      if (query !== lastQuery) {
+        const errorMessage = {
+          id: Date.now() + 1,
+          type: 'error',
+          content: 'Sorry, I couldn\'t process that query. Please try rephrasing it.',
+          timestamp: new Date()
+        };
+        setChatHistory(prev => [...prev, errorMessage]);
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDirectJQL = async (jqlQuery) => {
+  const handleDirectJQL = async (jqlQuery, page = 1) => {
     if (!jqlQuery.trim()) return;
 
     setLoading(true);
     setError(null);
+    setCurrentPage(page);
 
     try {
+      const startAt = (page - 1) * pageSize;
       const response = await axios.post(`${apiBaseUrl}/api/jql/execute`, {
         jql: jqlQuery,
-        max_results: 50,
-        start_at: 0
+        max_results: pageSize,
+        start_at: startAt
       });
 
       const data = response.data;
@@ -684,6 +706,82 @@ const IssuesPage = () => {
                 </div>
               )}
 
+              {/* Pagination Controls */}
+              {!loading && issues.length > 0 && totalCount > pageSize && (
+                <div style={paginationContainerStyle}>
+                  <div style={paginationInfoStyle}>
+                    Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, totalCount)} of {totalCount} issues
+                  </div>
+                  <div style={paginationControlsStyle}>
+                    <button
+                      onClick={() => lastQuery ? handleNaturalLanguageQuery(lastQuery, 1) : handleDirectJQL(jqlQuery, 1)}
+                      disabled={currentPage === 1}
+                      style={{
+                        ...paginationButtonStyle,
+                        ...(currentPage === 1 ? paginationButtonDisabledStyle : {})
+                      }}
+                    >
+                      First
+                    </button>
+                    <button
+                      onClick={() => lastQuery ? handleNaturalLanguageQuery(lastQuery, currentPage - 1) : handleDirectJQL(jqlQuery, currentPage - 1)}
+                      disabled={currentPage === 1}
+                      style={{
+                        ...paginationButtonStyle,
+                        ...(currentPage === 1 ? paginationButtonDisabledStyle : {})
+                      }}
+                    >
+                      Previous
+                    </button>
+                    <span style={pageInfoStyle}>
+                      Page {currentPage} of {Math.ceil(totalCount / pageSize)}
+                    </span>
+                    <button
+                      onClick={() => lastQuery ? handleNaturalLanguageQuery(lastQuery, currentPage + 1) : handleDirectJQL(jqlQuery, currentPage + 1)}
+                      disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                      style={{
+                        ...paginationButtonStyle,
+                        ...(currentPage >= Math.ceil(totalCount / pageSize) ? paginationButtonDisabledStyle : {})
+                      }}
+                    >
+                      Next
+                    </button>
+                    <button
+                      onClick={() => lastQuery ? handleNaturalLanguageQuery(lastQuery, Math.ceil(totalCount / pageSize)) : handleDirectJQL(jqlQuery, Math.ceil(totalCount / pageSize))}
+                      disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                      style={{
+                        ...paginationButtonStyle,
+                        ...(currentPage >= Math.ceil(totalCount / pageSize) ? paginationButtonDisabledStyle : {})
+                      }}
+                    >
+                      Last
+                    </button>
+                  </div>
+                  <div style={pageSizeControlStyle}>
+                    <label style={pageSizeLabelStyle}>Items per page:</label>
+                    <select 
+                      value={pageSize} 
+                      onChange={(e) => {
+                        const newPageSize = parseInt(e.target.value);
+                        setPageSize(newPageSize);
+                        setCurrentPage(1);
+                        // Refresh current query with new page size
+                        if (lastQuery) {
+                          handleNaturalLanguageQuery(lastQuery, 1);
+                        } else if (jqlQuery) {
+                          handleDirectJQL(jqlQuery, 1);
+                        }
+                      }}
+                      style={pageSizeSelectStyle}
+                    >
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+
               {/* No Issues Message */}
               {!loading && issues.length === 0 && !error && (
                 <div style={noIssuesStyle}>
@@ -1159,6 +1257,79 @@ const tableContainerStyle = {
   marginTop: '1rem',
   borderRadius: '8px',
   boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+};
+
+// Pagination styles
+const paginationContainerStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginTop: '1.5rem',
+  padding: '1rem',
+  backgroundColor: '#f8f9fa',
+  borderRadius: '8px',
+  border: '1px solid #dee2e6'
+};
+
+const paginationInfoStyle = {
+  color: '#495057',
+  fontSize: '0.9rem',
+  fontWeight: '500'
+};
+
+const paginationControlsStyle = {
+  display: 'flex',
+  gap: '0.5rem',
+  alignItems: 'center'
+};
+
+const paginationButtonStyle = {
+  padding: '0.5rem 1rem',
+  backgroundColor: '#0052CC',
+  color: 'white',
+  border: 'none',
+  borderRadius: '4px',
+  cursor: 'pointer',
+  fontSize: '0.9rem',
+  fontWeight: '500',
+  transition: 'all 0.2s',
+  minWidth: '70px'
+};
+
+const paginationButtonDisabledStyle = {
+  backgroundColor: '#6c757d',
+  cursor: 'not-allowed',
+  opacity: 0.6
+};
+
+const pageInfoStyle = {
+  margin: '0 1rem',
+  padding: '0.5rem',
+  fontSize: '0.9rem',
+  fontWeight: '500',
+  color: '#495057'
+};
+
+const pageSizeControlStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem'
+};
+
+const pageSizeLabelStyle = {
+  fontSize: '0.9rem',
+  fontWeight: '500',
+  color: '#495057'
+};
+
+const pageSizeSelectStyle = {
+  padding: '0.5rem',
+  border: '1px solid #ced4da',
+  borderRadius: '4px',
+  backgroundColor: 'white',
+  fontSize: '0.9rem',
+  cursor: 'pointer',
+  minWidth: '70px'
 };
 
 export default IssuesPage;
