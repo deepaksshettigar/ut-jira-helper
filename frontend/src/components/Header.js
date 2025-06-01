@@ -1,15 +1,44 @@
 import React from 'react';
+import { Link, useLocation } from 'react-router-dom';
 
 function Header() {
+  const location = useLocation();
+  
+  const isActive = (path) => {
+    return location.pathname === path;
+  };
+
   return (
     <header style={headerStyle}>
       <div style={containerStyle}>
         <h1 style={logoStyle}>UT Jira Helper</h1>
         <nav>
           <ul style={navStyle}>
-            <li><a href="/" style={linkStyle}>Dashboard</a></li>
-            <li><a href="/tasks" style={linkStyle}>Tasks</a></li>
-            <li><a href="/settings" style={linkStyle}>Settings</a></li>
+            <li>
+              <Link 
+                to="/" 
+                style={{
+                  ...linkStyle,
+                  ...(isActive('/') ? activeLinkStyle : {})
+                }}
+              >
+                Dashboard
+              </Link>
+            </li>
+            <li>
+              <Link 
+                to="/issues" 
+                style={{
+                  ...linkStyle,
+                  ...(isActive('/issues') ? activeLinkStyle : {})
+                }}
+              >
+                Issues
+              </Link>
+            </li>
+            <li>
+              <a href="/settings" style={linkStyle}>Settings</a>
+            </li>
           </ul>
         </nav>
       </div>
@@ -51,6 +80,11 @@ const linkStyle = {
   textDecoration: 'none',
   padding: '0 1rem',
   fontWeight: 500
+};
+
+const activeLinkStyle = {
+  backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  borderRadius: '4px'
 };
 
 export default Header;

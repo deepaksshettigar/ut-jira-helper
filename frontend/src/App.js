@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import axios from 'axios';
 import Dashboard from './components/Dashboard';
+import IssuesPage from './components/IssuesPage';
 import Header from './components/Header';
 import './App.css';
 
@@ -30,19 +32,25 @@ function App() {
   };
 
   return (
-    <div className="app">
-      <Header />
-      <main>
-        {error && <div className="error-message">{error}</div>}
-        {loading ? (
-          <div style={loadingStyle}>
-            <p>Loading dashboard...</p>
-          </div>
-        ) : (
-          <Dashboard tasks={tasks} />
-        )}
-      </main>
-    </div>
+    <Router>
+      <div className="app">
+        <Header />
+        <main>
+          {error && <div className="error-message">{error}</div>}
+          {loading ? (
+            <div style={loadingStyle}>
+              <p>Loading dashboard...</p>
+            </div>
+          ) : (
+            <Routes>
+              <Route path="/" element={<Dashboard tasks={tasks} />} />
+              <Route path="/issues" element={<IssuesPage />} />
+              <Route path="/dashboard" element={<Dashboard tasks={tasks} />} />
+            </Routes>
+          )}
+        </main>
+      </div>
+    </Router>
   );
 }
 

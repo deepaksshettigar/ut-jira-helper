@@ -22,10 +22,12 @@ app.add_middleware(
 # Import routers
 from app.api.tasks import router as tasks_router
 from app.api.conversation import router as conversation_router
+from app.api.jql import router as jql_router
 
 # Include routers
 app.include_router(tasks_router, prefix="/api")
 app.include_router(conversation_router, prefix="/api")
+app.include_router(jql_router, prefix="/api/jql")
 
 # Mount React build directory as static files if it exists
 build_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '..', 'frontend', 'build')

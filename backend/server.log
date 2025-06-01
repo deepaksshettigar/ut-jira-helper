@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/Users/deepak/Personal/Projects/2025-06/ut-jira-helper-v2/backend/run.py", line 5, in <module>
+    import uvicorn
+ModuleNotFoundError: No module named 'uvicorn'
