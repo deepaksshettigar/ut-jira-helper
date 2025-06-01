@@ -1,20 +1,47 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  LineController,
+  BarController,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
+
+// Register Chart.js components
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  LineController,
+  BarController,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 const IssuesPage = () => {
   const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState('');
+  const [chatQuery, setChatQuery] = useState('');
+  const [jqlQuery, setJqlQuery] = useState('');
+  const [editMode, setEditMode] = useState(false);
   const [chatHistory, setChatHistory] = useState([]);
-  const [inputValue, setInputValue] = useState('');
-  const [currentJQL, setCurrentJQL] = useState('');
-  const [explanation, setExplanation] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [showJQLEditor, setShowJQLEditor] = useState(false);
-  const [totalCount, setTotalCount] = useState(0);
-  const [startAt, setStartAt] = useState(0);
-  const [maxResults] = useState(50);
-  
+  const [activeTab, setActiveTab] = useState('table'); // Add tab state
+  const [chartGroupBy, setChartGroupBy] = useState('duedate'); // Chart grouping selection
+  const [totalCount, setTotalCount] = useState(0); // Store total count from backend
+
   const chatEndRef = useRef(null);
   const apiBaseUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -25,7 +52,11 @@ const IssuesPage = () => {
 
   // Load initial data
   useEffect(() => {
-    handleNaturalLanguageQuery('Show me all issues');
+    const loadInitialData = () => {
+      handleNaturalLanguageQuery('Show me all issues');
+    };
+    loadInitialData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleNaturalLanguageQuery = async (query) => {
@@ -47,24 +78,25 @@ const IssuesPage = () => {
       const response = await axios.post(`${apiBaseUrl}/api/jql/convert`, {
         natural_language: query,
         context: 'Jira Issues List',
-        max_results: maxResults,
-        start_at: startAt
+        max_results: 50,
+        start_at: 0
       });
 
       const data = response.data;
       
       // Update state with results
       setIssues(data.issues);
-      setCurrentJQL(data.jql_query);
-      setExplanation(data.explanation);
-      setSuggestions(data.suggestions || []);
+      setJqlQuery(data.jql_query);
       setTotalCount(data.total_count);
+      setError('');
       
       // Add assistant response to chat
       const assistantMessage = {
         id: Date.now() + 1,
         type: 'assistant',
-        content: `Found ${data.total_count} issues. ${data.explanation}`,
+        content: data.total_count > data.issues.length 
+          ? `Found ${data.total_count} issues (showing first ${data.issues.length}).`
+          : `Found ${data.issues.length} issues.`,
         jql: data.jql_query,
         timestamp: new Date()
       };
@@ -95,16 +127,16 @@ const IssuesPage = () => {
     try {
       const response = await axios.post(`${apiBaseUrl}/api/jql/execute`, {
         jql: jqlQuery,
-        max_results: maxResults,
-        start_at: startAt
+        max_results: 50,
+        start_at: 0
       });
 
       const data = response.data;
       
       setIssues(data.issues);
-      setCurrentJQL(data.jql_query);
-      setExplanation(data.explanation);
+      setJqlQuery(data.jql_query);
       setTotalCount(data.total_count);
+      setError('');
 
     } catch (err) {
       console.error('Error executing JQL:', err);
@@ -116,14 +148,10 @@ const IssuesPage = () => {
 
   const handleChatSubmit = (e) => {
     e.preventDefault();
-    if (inputValue.trim()) {
-      handleNaturalLanguageQuery(inputValue);
-      setInputValue('');
+    if (chatQuery.trim()) {
+      handleNaturalLanguageQuery(chatQuery);
+      setChatQuery('');
     }
-  };
-
-  const handleSuggestionClick = (suggestion) => {
-    handleNaturalLanguageQuery(suggestion);
   };
 
   const formatDate = (dateString) => {
@@ -160,49 +188,293 @@ const IssuesPage = () => {
     return `${baseUrl}/browse/${issueKey}`;
   };
 
+  // Add function to prepare chart data based on grouping selection
+  const prepareChartData = () => {
+    if (!issues || issues.length === 0) return null;
+
+    const now = new Date();
+    let buckets = [];
+    let labels = [];
+    let chartTitle = '';
+    let yAxisLabel = 'Number of Issues';
+
+    switch (chartGroupBy) {
+      case 'duedate':
+        // Due date grouping (4 weeks)
+        for (let i = 3; i >= 0; i--) {
+          const weekStart = new Date(now.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
+          const weekLabel = weekStart.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric' 
+          });
+          labels.push(weekLabel);
+          buckets.push(0);
+        }
+
+        issues.forEach(issue => {
+          if (issue.due_date) {
+            const dueDate = new Date(issue.due_date);
+            for (let i = 0; i < 4; i++) {
+              const weekStart = new Date(now.getTime() - ((3 - i) * 7 * 24 * 60 * 60 * 1000));
+              const weekEnd = new Date(weekStart.getTime() + (7 * 24 * 60 * 60 * 1000));
+              
+              if (dueDate >= weekStart && dueDate < weekEnd) {
+                buckets[i]++;
+                break;
+              }
+            }
+          }
+        });
+
+        chartTitle = 'Issues Due by Week';
+        break;
+
+      case 'startdate':
+        // Start date grouping (4 weeks)
+        for (let i = 3; i >= 0; i--) {
+          const weekStart = new Date(now.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
+          const weekLabel = weekStart.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric' 
+          });
+          labels.push(weekLabel);
+          buckets.push(0);
+        }
+
+        issues.forEach(issue => {
+          if (issue.start_date) {
+            const startDate = new Date(issue.start_date);
+            for (let i = 0; i < 4; i++) {
+              const weekStart = new Date(now.getTime() - ((3 - i) * 7 * 24 * 60 * 60 * 1000));
+              const weekEnd = new Date(weekStart.getTime() + (7 * 24 * 60 * 60 * 1000));
+              
+              if (startDate >= weekStart && startDate < weekEnd) {
+                buckets[i]++;
+                break;
+              }
+            }
+          }
+        });
+
+        chartTitle = 'Issues Starting by Week';
+        break;
+
+      case 'created':
+        // Created date grouping (4 weeks)
+        for (let i = 3; i >= 0; i--) {
+          const weekStart = new Date(now.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
+          const weekLabel = weekStart.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric' 
+          });
+          labels.push(weekLabel);
+          buckets.push(0);
+        }
+
+        issues.forEach(issue => {
+          if (issue.created_date) {
+            const createdDate = new Date(issue.created_date);
+            for (let i = 0; i < 4; i++) {
+              const weekStart = new Date(now.getTime() - ((3 - i) * 7 * 24 * 60 * 60 * 1000));
+              const weekEnd = new Date(weekStart.getTime() + (7 * 24 * 60 * 60 * 1000));
+              
+              if (createdDate >= weekStart && createdDate < weekEnd) {
+                buckets[i]++;
+                break;
+              }
+            }
+          }
+        });
+
+        chartTitle = 'Issues Created by Week';
+        break;
+
+      case 'updated':
+        // Updated date grouping (4 weeks)
+        for (let i = 3; i >= 0; i--) {
+          const weekStart = new Date(now.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
+          const weekLabel = weekStart.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric' 
+          });
+          labels.push(weekLabel);
+          buckets.push(0);
+        }
+
+        issues.forEach(issue => {
+          if (issue.updated_date) {
+            const updatedDate = new Date(issue.updated_date);
+            for (let i = 0; i < 4; i++) {
+              const weekStart = new Date(now.getTime() - ((3 - i) * 7 * 24 * 60 * 60 * 1000));
+              const weekEnd = new Date(weekStart.getTime() + (7 * 24 * 60 * 60 * 1000));
+              
+              if (updatedDate >= weekStart && updatedDate < weekEnd) {
+                buckets[i]++;
+                break;
+              }
+            }
+          }
+        });
+
+        chartTitle = 'Issues Updated by Week';
+        break;
+
+      case 'resolved':
+        // Resolved date grouping (4 weeks)
+        for (let i = 3; i >= 0; i--) {
+          const weekStart = new Date(now.getTime() - (i * 7 * 24 * 60 * 60 * 1000));
+          const weekLabel = weekStart.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric' 
+          });
+          labels.push(weekLabel);
+          buckets.push(0);
+        }
+
+        issues.forEach(issue => {
+          if (issue.resolved_date) {
+            const resolvedDate = new Date(issue.resolved_date);
+            for (let i = 0; i < 4; i++) {
+              const weekStart = new Date(now.getTime() - ((3 - i) * 7 * 24 * 60 * 60 * 1000));
+              const weekEnd = new Date(weekStart.getTime() + (7 * 24 * 60 * 60 * 1000));
+              
+              if (resolvedDate >= weekStart && resolvedDate < weekEnd) {
+                buckets[i]++;
+                break;
+              }
+            }
+          }
+        });
+
+        chartTitle = 'Issues Resolved by Week';
+        break;
+
+      case 'status':
+        // Status grouping
+        const statusCounts = {};
+        issues.forEach(issue => {
+          const status = issue.status || 'Unknown';
+          statusCounts[status] = (statusCounts[status] || 0) + 1;
+        });
+
+        labels = Object.keys(statusCounts);
+        buckets = Object.values(statusCounts);
+        chartTitle = 'Issues by Status';
+        break;
+
+      case 'assignee':
+        // Assignee grouping
+        const assigneeCounts = {};
+        issues.forEach(issue => {
+          const assignee = issue.assignee || 'Unassigned';
+          const displayName = assignee.includes('@') ? assignee.split('@')[0] : assignee;
+          assigneeCounts[displayName] = (assigneeCounts[displayName] || 0) + 1;
+        });
+
+        labels = Object.keys(assigneeCounts);
+        buckets = Object.values(assigneeCounts);
+        chartTitle = 'Issues by Assignee';
+        break;
+
+      case 'priority':
+        // Priority grouping
+        const priorityCounts = {};
+        issues.forEach(issue => {
+          const priority = issue.priority || 'No Priority';
+          priorityCounts[priority] = (priorityCounts[priority] || 0) + 1;
+        });
+
+        labels = Object.keys(priorityCounts);
+        buckets = Object.values(priorityCounts);
+        chartTitle = 'Issues by Priority';
+        break;
+
+      default:
+        return null;
+    }
+
+    // Calculate average for time-based charts
+    const average = (chartGroupBy === 'duedate' || chartGroupBy === 'created' || 
+                    chartGroupBy === 'startdate' || chartGroupBy === 'updated' || 
+                    chartGroupBy === 'resolved') 
+      ? buckets.reduce((sum, count) => sum + count, 0) / buckets.length 
+      : 0;
+
+    // Prepare data for chart
+    const datasets = [
+      {
+        label: 'Issues',
+        data: buckets,
+        borderColor: '#0052CC',
+        backgroundColor: 'rgba(0, 82, 204, 0.1)',
+        borderWidth: 3,
+        fill: true,
+        tension: 0.4,
+        pointRadius: 5,
+        pointHoverRadius: 7
+      }
+    ];
+
+    // Add average line for time-based charts
+    if (chartGroupBy === 'duedate' || chartGroupBy === 'created' || 
+        chartGroupBy === 'startdate' || chartGroupBy === 'updated' || 
+        chartGroupBy === 'resolved') {
+      datasets.push({
+        label: `Average (${average.toFixed(1)})`,
+        data: new Array(buckets.length).fill(average),
+        borderColor: '#FF5722',
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        borderDash: [8, 4],
+        pointRadius: 0,
+        fill: false
+      });
+    }
+
+    return {
+      labels,
+      datasets,
+      title: chartTitle,
+      yAxisLabel
+    };
+  };
+
   return (
     <div style={pageStyle}>
-      {/* Header */}
       <div style={headerStyle}>
         <h1>Jira Issues</h1>
-        <p>Use natural language to search and filter your Jira issues</p>
+        <p>Use natural language to search and filter Jira issues</p>
       </div>
 
-      {/* Main Content */}
       <div style={mainContentStyle}>
-        {/* Chat Interface */}
+        {/* Chat Panel */}
         <div style={chatPanelStyle}>
           <div style={chatHeaderStyle}>
             <h3>Natural Language Query</h3>
             <button 
-              onClick={() => setShowJQLEditor(!showJQLEditor)}
+              onClick={() => setEditMode(!editMode)}
               style={toggleButtonStyle}
             >
-              {showJQLEditor ? 'Hide JQL' : 'Show JQL'}
+              {editMode ? 'Hide JQL' : 'Show JQL'}
             </button>
           </div>
 
           {/* JQL Editor (conditional) */}
-          {showJQLEditor && (
+          {editMode && (
             <div style={jqlEditorStyle}>
               <textarea
-                value={currentJQL}
-                onChange={(e) => setCurrentJQL(e.target.value)}
+                value={jqlQuery}
+                onChange={(e) => setJqlQuery(e.target.value)}
                 placeholder="Enter JQL query directly..."
                 style={jqlTextareaStyle}
               />
               <button 
-                onClick={() => handleDirectJQL(currentJQL)}
+                onClick={() => handleDirectJQL(jqlQuery)}
                 style={executeButtonStyle}
                 disabled={loading}
               >
                 Execute JQL
               </button>
-              {explanation && (
-                <div style={explanationStyle}>
-                  <strong>Explanation:</strong> {explanation}
-                </div>
-              )}
             </div>
           )}
 
@@ -238,8 +510,8 @@ const IssuesPage = () => {
           <form onSubmit={handleChatSubmit} style={inputFormStyle}>
             <input
               type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              value={chatQuery}
+              onChange={(e) => setChatQuery(e.target.value)}
               placeholder="Ask me about your issues... (e.g., 'Show me high priority bugs assigned to John')"
               style={chatInputStyle}
               disabled={loading}
@@ -247,181 +519,286 @@ const IssuesPage = () => {
             <button 
               type="submit" 
               style={sendButtonStyle}
-              disabled={loading || !inputValue.trim()}
+              disabled={loading || !chatQuery.trim()}
             >
               {loading ? '...' : 'Send'}
             </button>
           </form>
 
           {/* Suggestions */}
-          {suggestions.length > 0 && (
-            <div style={suggestionsStyle}>
-              <strong>Suggestions:</strong>
-              <div style={suggestionButtonsStyle}>
-                {suggestions.map((suggestion, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleSuggestionClick(suggestion)}
-                    style={suggestionButtonStyle}
-                    disabled={loading}
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Issues List */}
-        <div style={issuesListStyle}>
-          <div style={listHeaderStyle}>
-            <h3>Issues ({totalCount} total)</h3>
-            {loading && <div style={loadingIndicatorStyle}>Loading...</div>}
-          </div>
-
           {error && (
             <div style={errorStyle}>
               {error}
             </div>
           )}
+        </div>
 
-          <div style={issuesContainerStyle}>
-            {issues.length > 0 ? (
-              <table style={tableStyle}>
-                <thead>
-                  <tr style={tableHeaderRowStyle}>
-                    <th style={tableHeaderStyle}>Issue</th>
-                    <th style={tableHeaderStyle}>Title</th>
-                    <th style={tableHeaderStyle}>Status</th>
-                    <th style={tableHeaderStyle}>Assignee</th>
-                    <th style={tableHeaderStyle}>Priority</th>
-                    <th style={tableHeaderStyle}>Created</th>
-                    <th style={tableHeaderStyle}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {issues.map((issue) => (
-                    <tr 
-                      key={issue.id} 
-                      style={tableRowStyle}
-                      onMouseEnter={(e) => e.target.parentElement.style.backgroundColor = '#f8f9fa'}
-                      onMouseLeave={(e) => e.target.parentElement.style.backgroundColor = 'transparent'}
-                    >
-                      <td style={tableCellStyle}>
-                        <span style={issueKeyStyle}>{issue.id}</span>
-                      </td>
-                      <td style={tableCellStyle}>
-                        <div style={issueTitleCellStyle}>
-                          <strong>{issue.title}</strong>
-                          {issue.description && (
-                            <div style={issueDescriptionCellStyle}>
-                              {issue.description.length > 100 ? 
-                                issue.description.substring(0, 100) + '...' : 
-                                issue.description
-                              }
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td style={tableCellStyle}>
-                        <span 
-                          style={{
-                            ...statusBadgeStyle,
-                            backgroundColor: getStatusColor(issue.status)
-                          }}
-                        >
-                          {issue.status}
-                        </span>
-                      </td>
-                      <td style={tableCellStyle}>
-                        <span style={assigneeStyle}>
-                          👤 {issue.assignee || 'Unassigned'}
-                        </span>
-                      </td>
-                      <td style={tableCellStyle}>
-                        {issue.priority && (
-                          <span style={priorityStyle}>
-                            {getPriorityIcon(issue.priority)} {issue.priority}
-                          </span>
-                        )}
-                      </td>
-                      <td style={tableCellStyle}>
-                        <span style={dateStyle}>
-                          {formatDate(issue.created_date)}
-                        </span>
-                      </td>
-                      <td style={tableCellStyle}>
-                        <a
-                          href={getJiraUrl(issue.id)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={jiraLinkStyle}
-                          onMouseEnter={(e) => {
-                            e.target.style.backgroundColor = '#0052CC';
-                            e.target.style.color = 'white';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.target.style.backgroundColor = '#f8f9fa';
-                            e.target.style.color = '#0052CC';
-                          }}
-                        >
-                          Open in Jira ↗
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <div style={noIssuesStyle}>
-                {loading ? 'Loading issues...' : 'No issues found. Try a different search query.'}
-              </div>
-            )}
+        {/* Issues Display Panel */}
+        <div style={issuesPanelStyle}>
+          {/* Tab Navigation */}
+          <div style={tabNavigationStyle}>
+            <button
+              style={{
+                ...tabButtonStyle,
+                ...(activeTab === 'table' ? activeTabButtonStyle : {})
+              }}
+              onClick={() => setActiveTab('table')}
+            >
+              Issues Table
+            </button>
+            <button
+              style={{
+                ...tabButtonStyle,
+                ...(activeTab === 'chart' ? activeTabButtonStyle : {})
+              }}
+              onClick={() => setActiveTab('chart')}
+            >
+              Data Trends
+            </button>
           </div>
 
-          {/* Pagination */}
-          {totalCount > maxResults && (
-            <div style={paginationStyle}>
-              <button
-                onClick={() => {
-                  const newStartAt = Math.max(0, startAt - maxResults);
-                  setStartAt(newStartAt);
-                  if (currentJQL) {
-                    handleDirectJQL(currentJQL);
-                  }
-                }}
-                disabled={startAt === 0 || loading}
-                style={pageButtonStyle}
-              >
-                Previous
-              </button>
-              
-              <span style={pageInfoStyle}>
-                {startAt + 1} - {Math.min(startAt + maxResults, totalCount)} of {totalCount}
-              </span>
-              
-              <button
-                onClick={() => {
-                  const newStartAt = startAt + maxResults;
-                  if (newStartAt < totalCount) {
-                    setStartAt(newStartAt);
-                    if (currentJQL) {
-                      handleDirectJQL(currentJQL);
-                    }
-                  }
-                }}
-                disabled={startAt + maxResults >= totalCount || loading}
-                style={pageButtonStyle}
-              >
-                Next
-              </button>
+          {/* Tab Content */}
+          {activeTab === 'table' && (
+            <div>
+              {/* Issues Count */}
+              <div style={issuesCountStyle}>
+                {loading ? 'Loading...' : 
+                  `Showing ${issues.length} of ${issues.length} issues${totalCount > issues.length ? ` (${totalCount} total found)` : ''}`
+                }
+                {jqlQuery && (
+                  <div style={jqlDisplayStyle}>
+                    <strong>JQL:</strong> {jqlQuery}
+                  </div>
+                )}
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div style={errorStyle}>
+                  {error}
+                </div>
+              )}
+
+              {/* Issues Table */}
+              {!loading && issues.length > 0 && (
+                <div style={tableContainerStyle}>
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr style={tableHeaderRowStyle}>
+                        <th style={tableHeaderStyle}>Issue</th>
+                        <th style={tableHeaderStyle}>Title</th>
+                        <th style={tableHeaderStyle}>Status</th>
+                        <th style={tableHeaderStyle}>Assignee</th>
+                        <th style={tableHeaderStyle}>Priority</th>
+                        <th style={tableHeaderStyle}>Created</th>
+                        <th style={tableHeaderStyle}>Updated</th>
+                        <th style={tableHeaderStyle}>Start Date</th>
+                        <th style={tableHeaderStyle}>Due Date</th>
+                        <th style={tableHeaderStyle}>Resolved</th>
+                        <th style={tableHeaderStyle}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {issues.map((issue) => (
+                        <tr 
+                          key={issue.id} 
+                          style={tableRowStyle}
+                        >
+                          <td style={tableCellStyle}>
+                            <span style={issueKeyStyle}>{issue.id}</span>
+                          </td>
+                          <td style={tableCellStyle}>
+                            <div style={issueTitleCellStyle}>
+                              <strong>{issue.title}</strong>
+                              {issue.description && (
+                                <div style={issueDescriptionCellStyle}>
+                                  {issue.description.length > 100 ? 
+                                    issue.description.substring(0, 100) + '...' : 
+                                    issue.description
+                                  }
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td style={tableCellStyle}>
+                            <span 
+                              style={{
+                                ...statusBadgeStyle,
+                                backgroundColor: getStatusColor(issue.status)
+                              }}
+                            >
+                              {issue.status}
+                            </span>
+                          </td>
+                          <td style={tableCellStyle}>
+                            <span style={assigneeStyle}>
+                              👤 {issue.assignee || 'Unassigned'}
+                            </span>
+                          </td>
+                          <td style={tableCellStyle}>
+                            {issue.priority && (
+                              <span style={priorityStyle}>
+                                {getPriorityIcon(issue.priority)} {issue.priority}
+                              </span>
+                            )}
+                          </td>
+                          <td style={tableCellStyle}>
+                            <span style={dateStyle}>
+                              {formatDate(issue.created_date)}
+                            </span>
+                          </td>
+                          <td style={tableCellStyle}>
+                            <span style={dateStyle}>
+                              {formatDate(issue.updated_date)}
+                            </span>
+                          </td>
+                          <td style={tableCellStyle}>
+                            <span style={dateStyle}>
+                              {formatDate(issue.start_date)}
+                            </span>
+                          </td>
+                          <td style={tableCellStyle}>
+                            <span style={dateStyle}>
+                              {formatDate(issue.due_date)}
+                            </span>
+                          </td>
+                          <td style={tableCellStyle}>
+                            <span style={dateStyle}>
+                              {formatDate(issue.resolved_date)}
+                            </span>
+                          </td>
+                          <td style={tableCellStyle}>
+                            <a
+                              href={getJiraUrl(issue.id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={jiraLinkStyle}
+                            >
+                              Open in Jira ↗
+                            </a>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* No Issues Message */}
+              {!loading && issues.length === 0 && !error && (
+                <div style={noIssuesStyle}>
+                  No issues found. Try a different search query.
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'chart' && (
+            <div style={chartTabStyle}>
+              {/* Chart Controls */}
+              <div style={chartControlsStyle}>
+                <h3 style={chartTitleStyle}>Data Trends</h3>
+                <div style={groupByContainerStyle}>
+                  <label style={groupByLabelStyle}>Group by:</label>
+                  <select 
+                    value={chartGroupBy} 
+                    onChange={(e) => setChartGroupBy(e.target.value)}
+                    style={groupBySelectStyle}
+                  >
+                    <option value="duedate">Due Date (4 weeks)</option>
+                    <option value="startdate">Start Date (4 weeks)</option>
+                    <option value="created">Created Date (4 weeks)</option>
+                    <option value="updated">Updated Date (4 weeks)</option>
+                    <option value="resolved">Resolved Date (4 weeks)</option>
+                    <option value="status">Status</option>
+                    <option value="assignee">Assignee</option>
+                    <option value="priority">Priority</option>
+                  </select>
+                </div>
+              </div>
+
+              {!loading && issues.length > 0 ? (
+                <div style={chartContainerStyle}>
+                  <TrendChart data={prepareChartData()} />
+                </div>
+              ) : (
+                <div style={noDataStyle}>
+                  {loading ? 'Loading chart data...' : 'No data available for chart. Please search for issues first.'}
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
     </div>
   );
+};
+
+// Add the chart component
+const TrendChart = ({ data }) => {
+  const canvasRef = useRef(null);
+  const chartRef = useRef(null);
+
+  useEffect(() => {
+    if (!data || !canvasRef.current) return;
+
+    // Destroy existing chart
+    if (chartRef.current) {
+      chartRef.current.destroy();
+    }
+
+    // Determine chart type based on data structure
+    const chartType = (data.labels && data.labels.length <= 6) ? 'bar' : 'line';
+
+    // Create new chart
+    const ctx = canvasRef.current.getContext('2d');
+    chartRef.current = new ChartJS(ctx, {
+      type: chartType,
+      data: data,
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: {
+            display: true,
+            text: data.title || 'Data Trends',
+            font: { size: 16 }
+          },
+          legend: {
+            display: true,
+            position: 'top'
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: data.yAxisLabel || 'Count'
+            }
+          },
+          x: {
+            title: {
+              display: true,
+              text: 'Categories'
+            }
+          }
+        },
+        interaction: {
+          intersect: false,
+          mode: 'index'
+        }
+      }
+    });
+
+    return () => {
+      if (chartRef.current) {
+        chartRef.current.destroy();
+      }
+    };
+  }, [data]);
+
+  return <canvas ref={canvasRef} />;
 };
 
 // Styles
@@ -506,14 +883,6 @@ const executeButtonStyle = {
   cursor: 'pointer'
 };
 
-const explanationStyle = {
-  marginTop: '0.5rem',
-  padding: '0.5rem',
-  backgroundColor: '#e3fcef',
-  borderRadius: '4px',
-  fontSize: '0.9rem'
-};
-
 const chatHistoryStyle = {
   flex: 1,
   maxHeight: '400px',
@@ -586,61 +955,106 @@ const sendButtonStyle = {
   fontSize: '1rem'
 };
 
-const suggestionsStyle = {
-  marginTop: '1rem',
-  padding: '1rem',
-  backgroundColor: '#f8f9fa',
-  borderRadius: '4px'
-};
-
-const suggestionButtonsStyle = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '0.5rem',
-  marginTop: '0.5rem'
-};
-
-const suggestionButtonStyle = {
-  padding: '0.5rem',
-  backgroundColor: 'white',
-  border: '1px solid #ddd',
-  borderRadius: '4px',
-  cursor: 'pointer',
-  textAlign: 'left',
-  fontSize: '0.9rem'
-};
-
-const issuesListStyle = {
+const issuesPanelStyle = {
   backgroundColor: 'white',
   borderRadius: '8px',
   padding: '1.5rem',
   boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
 };
 
-const listHeaderStyle = {
+const tabNavigationStyle = {
   display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  marginBottom: '1.5rem',
-  paddingBottom: '1rem',
-  borderBottom: '1px solid #eee'
-};
-
-const loadingIndicatorStyle = {
-  color: '#666',
-  fontStyle: 'italic'
-};
-
-const errorStyle = {
-  backgroundColor: '#ffebee',
-  color: '#c62828',
-  padding: '1rem',
-  borderRadius: '4px',
+  borderBottom: '1px solid #ddd',
   marginBottom: '1rem'
 };
 
-const issuesContainerStyle = {
-  overflowX: 'auto'
+const tabButtonStyle = {
+  padding: '0.75rem 1.5rem',
+  border: 'none',
+  backgroundColor: 'transparent',
+  cursor: 'pointer',
+  borderBottom: '2px solid transparent',
+  fontSize: '1rem',
+  fontWeight: '500',
+  color: '#666'
+};
+
+const activeTabButtonStyle = {
+  color: '#0052CC',
+  borderBottomColor: '#0052CC'
+};
+
+const issuesCountStyle = {
+  marginBottom: '1rem',
+  fontSize: '1rem',
+  color: '#333'
+};
+
+const chartTabStyle = {
+  padding: '1rem 0'
+};
+
+const chartControlsStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: '1rem',
+  padding: '1rem',
+  backgroundColor: '#f8f9fa',
+  borderRadius: '8px',
+  border: '1px solid #dee2e6'
+};
+
+const groupByContainerStyle = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.5rem'
+};
+
+const groupByLabelStyle = {
+  fontWeight: '500',
+  color: '#333',
+  fontSize: '0.9rem'
+};
+
+const groupBySelectStyle = {
+  padding: '0.5rem',
+  border: '1px solid #ddd',
+  borderRadius: '4px',
+  backgroundColor: 'white',
+  fontSize: '0.9rem',
+  minWidth: '200px',
+  cursor: 'pointer'
+};
+
+const chartTitleStyle = {
+  margin: '0',
+  color: '#333',
+  fontSize: '1.2rem'
+};
+
+const chartContainerStyle = {
+  height: '400px',
+  backgroundColor: 'white',
+  padding: '1rem',
+  borderRadius: '8px',
+  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+};
+
+const noDataStyle = {
+  textAlign: 'center',
+  padding: '3rem',
+  color: '#666',
+  fontSize: '1.1rem'
+};
+
+const noIssuesStyle = {
+  textAlign: 'center',
+  padding: '3rem',
+  color: '#666',
+  fontSize: '1.1rem',
+  backgroundColor: '#f8f9fa',
+  borderRadius: '8px'
 };
 
 // Table styles
@@ -730,36 +1144,21 @@ const statusBadgeStyle = {
   fontWeight: 'bold'
 };
 
-const noIssuesStyle = {
-  textAlign: 'center',
-  padding: '3rem',
-  color: '#666',
-  fontSize: '1.1rem',
-  backgroundColor: '#f8f9fa',
-  borderRadius: '8px'
-};
-
-const paginationStyle = {
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  gap: '1rem',
-  marginTop: '2rem',
-  padding: '1rem'
-};
-
-const pageButtonStyle = {
-  padding: '0.5rem 1rem',
-  backgroundColor: '#0052CC',
-  color: 'white',
-  border: 'none',
+const errorStyle = {
+  padding: '1rem',
+  backgroundColor: '#ffebee',
+  color: '#c62828',
   borderRadius: '4px',
-  cursor: 'pointer'
+  border: '1px solid #ffcdd2',
+  margin: '1rem 0',
+  fontSize: '0.9rem'
 };
 
-const pageInfoStyle = {
-  color: '#666',
-  fontSize: '0.9rem'
+const tableContainerStyle = {
+  overflowX: 'auto',
+  marginTop: '1rem',
+  borderRadius: '8px',
+  boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
 };
 
 export default IssuesPage;

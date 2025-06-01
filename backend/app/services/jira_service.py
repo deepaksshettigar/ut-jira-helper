@@ -1,5 +1,8 @@
-from jira import JIRA
-from typing import List, Dict, Optional
+try:
+    from jira import JIRA
+except ImportError:
+    JIRA = None
+from typing import List, Dict, Optional, Any
 from app.config import settings
 import logging
 from datetime import datetime, timedelta
@@ -30,6 +33,10 @@ class JiraService:
     def _initialize_client(self):
         """Initialize Jira client with credentials"""
         try:
+            if JIRA is None:
+                logger.warning("Jira library not available. Using mock data.")
+                return
+                
             if not all([settings.jira_server, settings.jira_username, settings.jira_api_token]):
                 logger.warning("Jira credentials not configured. Using mock data.")
                 return
@@ -40,17 +47,17 @@ class JiraService:
             )
             logger.info("Jira client initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize Jira client: {e}")
+            logger.error("Failed to initialize Jira client: %s", e)
             self.jira_client = None
     
     def is_configured(self) -> bool:
         """Check if Jira is properly configured"""
         return self.jira_client is not None
     
-    def get_tasks(self, status: Optional[str] = None, assignee: Optional[str] = None, filter_criteria: Optional[FilterCriteria] = None) -> List[Dict]:
+    def get_tasks(self, status: Optional[str] = None, assignee: Optional[str] = None, filter_criteria: Optional[FilterCriteria] = None) -> List[Dict[str, Any]]:
         """Get tasks from Jira with optional filtering"""
         if not self.is_configured():
-            return self._get_mock_tasks(status, assignee, filter_criteria)
+            return []
         
         try:
             # Build JQL query from criteria
@@ -85,8 +92,8 @@ class JiraService:
             return tasks
             
         except Exception as e:
-            logger.error(f"Error fetching tasks from Jira: {e}")
-            return self._get_mock_tasks(status, assignee, filter_criteria)
+            logger.error("Error fetching tasks from Jira: %s", e)
+            return []
     
     def _build_jql_from_criteria(self, criteria: FilterCriteria) -> List[str]:
         """Build JQL query parts from FilterCriteria"""
@@ -142,7 +149,7 @@ class JiraService:
         
         return None
     
-    def _apply_additional_filtering(self, tasks: List[Dict], criteria: FilterCriteria) -> List[Dict]:
+    def _apply_additional_filtering(self, tasks: List[Dict[str, Any]], criteria: FilterCriteria) -> List[Dict[str, Any]]:
         """Apply additional filtering that couldn't be done in JQL"""
         filtered_tasks = tasks
         
@@ -157,22 +164,34 @@ class JiraService:
         
         return filtered_tasks
     
-    def get_task_by_id(self, task_id: str) -> Optional[Dict]:
+    def get_task_by_id(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific task by ID"""
         if not self.is_configured():
-            return self._get_mock_task_by_id(task_id)
+            return None
         
         try:
             issue = self.jira_client.issue(task_id)
             return self._convert_issue_to_task(issue)
         except Exception as e:
-            logger.error(f"Error fetching task {task_id}: {e}")
-            return self._get_mock_task_by_id(task_id)
+            logger.error("Error fetching task %s: %s", task_id, e)
+            return None
     
-    def create_task(self, title: str, description: str = "", assignee: str = "") -> Dict:
+    def create_task(self, title: str, description: str = "", assignee: str = "") -> Dict[str, Any]:
         """Create a new task in Jira"""
         if not self.is_configured():
-            return self._create_mock_task(title, description, assignee)
+            return {
+                "id": f"NO-JIRA-{hash(title) % 1000}",
+                "title": title,
+                "description": description,
+                "status": "To Do",
+                "assignee": assignee or "Unassigned",
+                "created_date": datetime.now().isoformat(),
+                "updated_date": datetime.now().isoformat(),
+                "resolved_date": None,
+                "start_date": datetime.now().isoformat(),
+                "due_date": (datetime.now() + timedelta(days=7)).isoformat(),
+                "priority": "Medium"
+            }
         
         try:
             issue_dict = {
@@ -189,24 +208,87 @@ class JiraService:
             return self._convert_issue_to_task(new_issue)
             
         except Exception as e:
-            logger.error(f"Error creating task in Jira: {e}")
-            return self._create_mock_task(title, description, assignee)
+            logger.error("Error creating task in Jira: %s", e)
+            return {
+                "id": f"NO-JIRA-{hash(title) % 1000}",
+                "title": title,
+                "description": description,
+                "status": "To Do",
+                "assignee": assignee or "Unassigned",
+                "created_date": datetime.now().isoformat(),
+                "updated_date": datetime.now().isoformat(),
+                "resolved_date": None,
+                "start_date": datetime.now().isoformat(),
+                "due_date": (datetime.now() + timedelta(days=7)).isoformat(),
+                "priority": "Medium"
+            }
     
-    def _convert_issue_to_task(self, issue) -> Dict:
+    def _convert_issue_to_task(self, issue: Any) -> Dict[str, Any]:
         """Convert Jira issue to task dictionary"""
+        # Debug logging to see what fields are available
+        logger.debug(f"Converting issue {issue.key}, available fields: {dir(issue.fields)}")
+        if hasattr(issue.fields, 'duedate'):
+            logger.debug(f"Due date field value: {issue.fields.duedate}")
+        if hasattr(issue.fields, 'priority'):
+            logger.debug(f"Priority field value: {issue.fields.priority}")
+        
+        # Check for start date fields (common variations)
+        start_date_fields = ['startdate', 'customfield_10015', 'customfield_10016', 'customfield_10002']
+        for field_name in start_date_fields:
+            if hasattr(issue.fields, field_name):
+                logger.debug(f"Found start date field {field_name}: {getattr(issue.fields, field_name)}")
+        
         resolved_date = None
         if hasattr(issue.fields, 'resolutiondate') and issue.fields.resolutiondate:
             try:
                 resolved_date = datetime.fromisoformat(issue.fields.resolutiondate.replace('Z', '+00:00'))
-            except:
+            except Exception:
                 resolved_date = None
         
         created_date = None
         if hasattr(issue.fields, 'created') and issue.fields.created:
             try:
                 created_date = datetime.fromisoformat(issue.fields.created.replace('Z', '+00:00'))
-            except:
+            except Exception:
                 created_date = None
+        
+        # Extract updated date
+        updated_date = None
+        if hasattr(issue.fields, 'updated') and issue.fields.updated:
+            try:
+                updated_date = datetime.fromisoformat(issue.fields.updated.replace('Z', '+00:00'))
+            except Exception:
+                updated_date = None
+        
+        # Extract start date (try common field names)
+        start_date = None
+        start_date_fields = ['startdate', 'customfield_10015', 'customfield_10016', 'customfield_10002']
+        for field_name in start_date_fields:
+            if hasattr(issue.fields, field_name):
+                field_value = getattr(issue.fields, field_name)
+                if field_value:
+                    try:
+                        if isinstance(field_value, str):
+                            start_date = datetime.fromisoformat(field_value.replace('Z', '+00:00'))
+                        else:
+                            # Might be a datetime object already
+                            start_date = field_value
+                        break
+                    except Exception:
+                        continue
+        
+        # Extract due date
+        due_date = None
+        if hasattr(issue.fields, 'duedate') and issue.fields.duedate:
+            try:
+                due_date = datetime.fromisoformat(issue.fields.duedate.replace('Z', '+00:00'))
+            except Exception:
+                due_date = None
+        
+        # Extract priority
+        priority = None
+        if hasattr(issue.fields, 'priority') and issue.fields.priority:
+            priority = str(issue.fields.priority.name) if hasattr(issue.fields.priority, 'name') else str(issue.fields.priority)
         
         return {
             "id": str(issue.key),
@@ -215,160 +297,16 @@ class JiraService:
             "status": str(issue.fields.status),
             "assignee": str(issue.fields.assignee) if issue.fields.assignee else 'Unassigned',
             "created_date": created_date.isoformat() if created_date else None,
-            "resolved_date": resolved_date.isoformat() if resolved_date else None
+            "updated_date": updated_date.isoformat() if updated_date else None,
+            "resolved_date": resolved_date.isoformat() if resolved_date else None,
+            "start_date": start_date.isoformat() if start_date else None,
+            "due_date": due_date.isoformat() if due_date else None,
+            "priority": priority or 'Medium'
         }
     
-    def _get_mock_tasks(self, status: Optional[str] = None, assignee: Optional[str] = None, filter_criteria: Optional[FilterCriteria] = None) -> List[Dict]:
-        """Fallback mock data when Jira is not configured"""
-        # Create dates for realistic timeline - last 4 weeks
-        now = datetime.now()
-        base_date = now - timedelta(weeks=4)
-        
-        mock_tasks = [
-            {
-                "id": "JIRA-1",
-                "title": "Implement login page",
-                "description": "Create a responsive login page with email and password fields",
-                "status": "In Progress",
-                "assignee": "user1@example.com",
-                "created_date": (base_date + timedelta(days=2)).isoformat(),
-                "resolved_date": None
-            },
-            {
-                "id": "JIRA-2",
-                "title": "Fix navigation bug",
-                "description": "Menu doesn't appear correctly on mobile devices",
-                "status": "To Do",
-                "assignee": "user2@example.com",
-                "created_date": (base_date + timedelta(days=5)).isoformat(),
-                "resolved_date": None
-            },
-            {
-                "id": "JIRA-3",
-                "title": "Update documentation",
-                "description": "Add API documentation for the new endpoints",
-                "status": "Done",
-                "assignee": "user1@example.com",
-                "created_date": (base_date + timedelta(days=1)).isoformat(),
-                "resolved_date": (base_date + timedelta(days=8)).isoformat()
-            },
-            {
-                "id": "JIRA-4",
-                "title": "Create dashboard widget",
-                "description": "Design and implement dashboard widgets for data visualization",
-                "status": "To Do",
-                "assignee": "user2@example.com",
-                "created_date": (base_date + timedelta(days=10)).isoformat(),
-                "resolved_date": None
-            },
-            {
-                "id": "JIRA-5",
-                "title": "Fix login authentication",
-                "description": "Users unable to login with valid credentials",
-                "status": "In Progress",
-                "assignee": "user1@example.com",
-                "created_date": (base_date + timedelta(days=7)).isoformat(),
-                "resolved_date": None
-            },
-            {
-                "id": "JIRA-6",
-                "title": "Add user profile page",
-                "description": "Create user profile management functionality",
-                "status": "Done",
-                "assignee": "user2@example.com",
-                "created_date": (base_date + timedelta(days=3)).isoformat(),
-                "resolved_date": (base_date + timedelta(days=14)).isoformat()
-            },
-            {
-                "id": "JIRA-7",
-                "title": "Implement search functionality",
-                "description": "Add search capability to the application",
-                "status": "Done",
-                "assignee": "user1@example.com",
-                "created_date": (base_date + timedelta(days=6)).isoformat(),
-                "resolved_date": (base_date + timedelta(days=15)).isoformat()
-            },
-            {
-                "id": "JIRA-8",
-                "title": "Fix responsive design",
-                "description": "Improve mobile responsiveness across all pages",
-                "status": "Done",
-                "assignee": "user2@example.com",
-                "created_date": (base_date + timedelta(days=4)).isoformat(),
-                "resolved_date": (base_date + timedelta(days=16)).isoformat()
-            },
-            {
-                "id": "JIRA-9",
-                "title": "Setup automated testing",
-                "description": "Implement unit and integration tests",
-                "status": "Done",
-                "assignee": "user1@example.com",
-                "created_date": (base_date + timedelta(days=9)).isoformat(),
-                "resolved_date": (base_date + timedelta(days=21)).isoformat()
-            },
-            {
-                "id": "JIRA-10",
-                "title": "Database optimization",
-                "description": "Optimize database queries for better performance",
-                "status": "Done",
-                "assignee": "user2@example.com",
-                "created_date": (base_date + timedelta(days=12)).isoformat(),
-                "resolved_date": (base_date + timedelta(days=22)).isoformat()
-            }
-        ]
-        
-        # Apply filters using either legacy parameters or filter_criteria
-        filtered_tasks = mock_tasks
-        
-        if filter_criteria:
-            # Apply structured filtering
-            if filter_criteria.status:
-                filtered_tasks = [task for task in filtered_tasks 
-                                if task["status"] in filter_criteria.status]
-            
-            if filter_criteria.assignee:
-                filtered_tasks = [task for task in filtered_tasks 
-                                if task["assignee"] in filter_criteria.assignee]
-            
-            if filter_criteria.keywords:
-                keyword_filtered = []
-                for task in filtered_tasks:
-                    task_text = f"{task['title']} {task['description']}".lower()
-                    if any(keyword.lower() in task_text for keyword in filter_criteria.keywords):
-                        keyword_filtered.append(task)
-                filtered_tasks = keyword_filtered
-        else:
-            # Apply legacy filtering
-            if status:
-                filtered_tasks = [task for task in filtered_tasks if task["status"].lower() == status.lower()]
-            if assignee:
-                filtered_tasks = [task for task in filtered_tasks if task["assignee"] == assignee]
-        
-        return filtered_tasks
-    
-    def _get_mock_task_by_id(self, task_id: str) -> Optional[Dict]:
-        """Get mock task by ID"""
-        mock_tasks = self._get_mock_tasks()
-        for task in mock_tasks:
-            if task["id"] == task_id:
-                return task
-        return None
-    
-    def _create_mock_task(self, title: str, description: str = "", assignee: str = "") -> Dict:
-        """Create mock task"""
-        mock_tasks = self._get_mock_tasks()
-        new_task = {
-            "id": f"JIRA-{len(mock_tasks) + 1}",
-            "title": title,
-            "description": description,
-            "status": "To Do",
-            "assignee": assignee or "Unassigned",
-            "created_date": datetime.now().isoformat(),
-            "resolved_date": None
-        }
-        return new_task
 
-    def get_weekly_resolved_average(self, assignee: Optional[str] = None, weeks: int = 4) -> Dict:
+
+    def get_weekly_resolved_average(self, assignee: Optional[str] = None, weeks: int = 4) -> Dict[str, Any]:
         """Calculate average resolved tasks per week with optional assignee filter"""
         all_tasks = self.get_tasks()
         
