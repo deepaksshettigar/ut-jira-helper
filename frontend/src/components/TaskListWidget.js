@@ -4,6 +4,12 @@ import Widget from './Widget';
 function TaskListWidget({ tasks, title = "Recent Tasks", maxTasks = 5 }) {
   const displayTasks = (tasks || []).slice(0, maxTasks);
 
+  // Helper function to format dates
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString();
+  };
+
   if (!tasks || tasks.length === 0) {
     return (
       <Widget title={title}>
@@ -25,6 +31,33 @@ function TaskListWidget({ tasks, title = "Recent Tasks", maxTasks = 5 }) {
             {task.assignee && (
               <p style={assigneeStyle}>Assigned to: {task.assignee}</p>
             )}
+            <div style={taskDatesStyle}>
+              {task.created_date && (
+                <span style={dateItemStyle}>
+                  📅 Created: {formatDate(task.created_date)}
+                </span>
+              )}
+              {task.updated_date && (
+                <span style={dateItemStyle}>
+                  🔄 Updated: {formatDate(task.updated_date)}
+                </span>
+              )}
+              {task.start_date && (
+                <span style={dateItemStyle}>
+                  🟢 Start: {formatDate(task.start_date)}
+                </span>
+              )}
+              {task.due_date && (
+                <span style={dateItemStyle}>
+                  🔴 Due: {formatDate(task.due_date)}
+                </span>
+              )}
+              {task.resolved_date && (
+                <span style={dateItemStyle}>
+                  ✅ Resolved: {formatDate(task.resolved_date)}
+                </span>
+              )}
+            </div>
           </li>
         ))}
       </ul>
@@ -94,6 +127,21 @@ const showMoreStyle = {
   borderTop: '1px solid #e6e6e6',
   fontSize: '0.8rem',
   color: '#666'
+};
+
+const taskDatesStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.25rem',
+  marginTop: '0.5rem'
+};
+
+const dateItemStyle = {
+  fontSize: '0.7rem',
+  color: '#666',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.25rem'
 };
 
 // Function to determine status badge style based on status

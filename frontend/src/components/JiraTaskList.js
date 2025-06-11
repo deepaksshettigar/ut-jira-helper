@@ -1,6 +1,12 @@
 import React from 'react';
 
 function JiraTaskList({ tasks }) {
+  // Helper function to format dates
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString();
+  };
+
   if (!tasks || tasks.length === 0) {
     return <p>No tasks found.</p>;
   }
@@ -16,6 +22,44 @@ function JiraTaskList({ tasks }) {
               <span style={getStatusStyle(task.status)}>{task.status}</span>
             </div>
             <h3 style={taskTitleStyle}>{task.title}</h3>
+            {task.description && (
+              <p style={taskDescriptionStyle}>{task.description}</p>
+            )}
+            {task.assignee && (
+              <p style={assigneeStyle}>Assigned to: {task.assignee}</p>
+            )}
+            <div style={taskDatesStyle}>
+              {task.created_date && (
+                <span style={dateItemStyle}>
+                  📅 Created: {formatDate(task.created_date)}
+                </span>
+              )}
+              {task.updated_date && (
+                <span style={dateItemStyle}>
+                  🔄 Updated: {formatDate(task.updated_date)}
+                </span>
+              )}
+              {task.start_date && (
+                <span style={dateItemStyle}>
+                  🟢 Start: {formatDate(task.start_date)}
+                </span>
+              )}
+              {task.due_date && (
+                <span style={dateItemStyle}>
+                  🔴 Due: {formatDate(task.due_date)}
+                </span>
+              )}
+              {task.resolved_date && (
+                <span style={dateItemStyle}>
+                  ✅ Resolved: {formatDate(task.resolved_date)}
+                </span>
+              )}
+              {task.priority && (
+                <span style={priorityStyle}>
+                  ⭐ Priority: {task.priority}
+                </span>
+              )}
+            </div>
           </li>
         ))}
       </ul>
@@ -57,6 +101,44 @@ const taskIdStyle = {
 const taskTitleStyle = {
   margin: '0.5rem 0',
   fontSize: '1.1rem'
+};
+
+const taskDescriptionStyle = {
+  margin: '0.5rem 0',
+  fontSize: '0.9rem',
+  color: '#666',
+  lineHeight: 1.4
+};
+
+const assigneeStyle = {
+  margin: '0.5rem 0',
+  fontSize: '0.9rem',
+  color: '#333',
+  fontWeight: '500'
+};
+
+const taskDatesStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.25rem',
+  marginTop: '0.75rem'
+};
+
+const dateItemStyle = {
+  fontSize: '0.8rem',
+  color: '#666',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.25rem'
+};
+
+const priorityStyle = {
+  fontSize: '0.8rem',
+  color: '#666',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.25rem',
+  fontWeight: '500'
 };
 
 // Function to determine status badge style based on status

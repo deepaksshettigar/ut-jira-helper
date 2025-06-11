@@ -117,6 +117,11 @@ export class ConversationalHelper {
       };
     }
     
+    // Weekly resolved queries
+    if (lowerQuery.includes('average resolved') || lowerQuery.includes('weekly resolved') || lowerQuery.includes('resolved per week')) {
+      return this.handleWeeklyResolvedQuery(query);
+    }
+    
     // Workload queries
     if (lowerQuery.includes('workload') || lowerQuery.includes('how many') || lowerQuery.includes('count')) {
       return {
@@ -351,6 +356,68 @@ What task would you like to create?`;
 Just type naturally and I'll do my best to help! 🤖
 
 *Note: This is a demo AI assistant. In a full implementation, it would integrate with actual Jira APIs and could use local LLM models for enhanced capabilities.*`;
+  }
+
+  async handleWeeklyResolvedQuery(query) {
+    try {
+      const lowerQuery = query.toLowerCase();
+      
+      // Extract assignee from query if mentioned
+      let assignee = null;
+      if (lowerQuery.includes('user1') || lowerQuery.includes('for user1')) {
+        assignee = 'user1@example.com';
+      } else if (lowerQuery.includes('user2') || lowerQuery.includes('for user2')) {
+        assignee = 'user2@example.com';
+      }
+      
+      // Build API URL
+      let apiUrl = `${this.apiBaseUrl}/api/tasks/analytics/weekly-resolved`;
+      if (assignee) {
+        apiUrl += `?assignee=${encodeURIComponent(assignee)}`;
+      }
+      
+      // Fetch weekly analytics from backend
+      const response = await fetch(apiUrl);
+      if (!response.ok) {
+        throw new Error('Failed to fetch analytics');
+      }
+      
+      const analytics = await response.json();
+      
+      // Generate response text
+      const assigneeText = assignee ? ` for ${assignee}` : '';
+      const responseText = `Weekly Resolved Tasks Analysis${assigneeText}:
+
+📊 **Average:** ${analytics.average_per_week} tasks per week
+📈 **Total Resolved:** ${analytics.total_resolved} tasks in ${analytics.weeks_analyzed} weeks
+
+**Weekly Breakdown:**
+${Object.entries(analytics.weekly_breakdown)
+  .map(([week, count]) => `• ${week}: ${count} task${count === 1 ? '' : 's'}`)
+  .join('\n')}
+
+${analytics.total_resolved > 0 ? 
+  '🎯 Keep up the great work!' : 
+  '💡 Consider reviewing task completion workflow.'}`;
+
+      return {
+        text: responseText,
+        taskCount: analytics.total_resolved,
+        suggestedActions: ['View detailed breakdown', 'Export analytics', 'Compare assignees'],
+        chartRecommendation: 'weekly_trend',
+        chartData: analytics
+      };
+    } catch (error) {
+      console.error('Error fetching weekly analytics:', error);
+      
+      // Fallback response
+      return {
+        text: 'Sorry, I couldn\'t fetch the weekly resolved analytics right now. Please try again later.',
+        taskCount: 0,
+        suggestedActions: ['Try again', 'Check connection'],
+        chartRecommendation: null
+      };
+    }
   }
 
   getDefaultResponse(query) {
